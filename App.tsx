@@ -10,7 +10,7 @@ import GeminiAdvisor from './components/GeminiAdvisor';
 import CompoundCalculator from './components/CompoundCalculator';
 import HistoryTracker from './components/HistoryTracker';
 import { analyzePortfolioWithGemini, fetchStockPrice } from './services/geminiService';
-import { Settings, WalletMinimal, RefreshCcw, TrendingUp, Calculator, LayoutDashboard, Eye, EyeOff, History, Landmark } from 'lucide-react';
+import { Settings, Wallet, RefreshCcw, TrendingUp, Calculator, LayoutDashboard, Eye, EyeOff, History, Landmark } from 'lucide-react';
 
 type ViewMode = 'DASHBOARD' | 'HISTORY' | 'CALCULATOR';
 
@@ -243,7 +243,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                     <div className="bg-indigo-600 p-2 rounded-lg">
-                        <WalletMinimal className="text-white" size={20} />
+                        <Wallet className="text-white" size={20} />
                     </div>
                     <h1 className="text-xl font-bold tracking-tight text-white hidden sm:block">WealthFolio</h1>
                 </div>
