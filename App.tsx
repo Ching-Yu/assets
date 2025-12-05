@@ -5,6 +5,7 @@ import { DEFAULT_USD_TWD_RATE, MOCK_INITIAL_DATA } from './constants';
 import Dashboard from './components/Dashboard';
 import AssetList from './components/AssetList';
 import AssetModal from './components/AssetModal';
+import ConfirmModal from './components/ConfirmModal';
 import GeminiAdvisor from './components/GeminiAdvisor';
 import CompoundCalculator from './components/CompoundCalculator';
 import HistoryTracker from './components/HistoryTracker';
@@ -31,10 +32,14 @@ const App: React.FC = () => {
   });
   const [isRateLoading, setIsRateLoading] = useState(false);
 
+  // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<AssetType>(AssetType.TW_STOCK);
   const [editingAsset, setEditingAsset] = useState<Asset | undefined>(undefined);
   
+  // Delete Confirmation State
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
   const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
@@ -77,7 +82,6 @@ const App: React.FC = () => {
   }, []);
 
   // --- Automatic History Snapshot Logic ---
-  // Check once on mount if current month record exists
   useEffect(() => {
       const today = new Date();
       const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -85,7 +89,6 @@ const App: React.FC = () => {
       const hasRecord = history.some(r => r.date === currentMonthKey);
       
       if (!hasRecord && assets.length > 0) {
-          // Calculate current stats
           let totalAssets = 0;
           let totalLiabilities = 0;
 
@@ -115,9 +118,8 @@ const App: React.FC = () => {
           };
 
           setHistory(prev => [...prev, newRecord]);
-          console.log(`Auto-created history record for ${currentMonthKey}`);
       }
-  }, [history.length]); // Dependency on length ensures we don't loop, but runs if history loads empty
+  }, [history.length]);
 
   // --- Derived State (Filtering) ---
   const filteredAssets = useMemo(() => {
@@ -128,7 +130,6 @@ const App: React.FC = () => {
       });
   }, [assets, showTwStocks, showUsStocks]);
 
-  // Calculate Total Net Worth for the Calculator
   const currentNetWorth = useMemo(() => {
       let totalAssets = 0;
       let totalLoans = 0;
@@ -168,10 +169,17 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeleteAsset = (id: string) => {
-    if (window.confirm('確定要刪除此項目嗎？')) {
-      setAssets(prev => prev.filter(a => a.id !== id));
-    }
+  // Step 1: Trigger Modal
+  const handleDeleteClick = (id: string) => {
+      setDeleteId(id);
+  };
+
+  // Step 2: Execute Delete
+  const confirmDelete = () => {
+      if (deleteId) {
+          setAssets(prev => prev.filter(a => a.id !== deleteId));
+          setDeleteId(null);
+      }
   };
 
   const handleUpdateRecord = (updatedRecord: HistoryRecord) => {
@@ -350,7 +358,7 @@ const App: React.FC = () => {
                             assets={filteredAssets} 
                             exchangeRate={exchangeRate}
                             onAdd={handleAddAsset}
-                            onDelete={handleDeleteAsset}
+                            onDelete={handleDeleteClick}
                             onEdit={handleEditAsset}
                         />
                          <AssetList 
@@ -358,7 +366,7 @@ const App: React.FC = () => {
                             assets={filteredAssets} 
                             exchangeRate={exchangeRate}
                             onAdd={handleAddAsset}
-                            onDelete={handleDeleteAsset}
+                            onDelete={handleDeleteClick}
                             onEdit={handleEditAsset}
                         />
                      </div>
@@ -369,7 +377,7 @@ const App: React.FC = () => {
                         assets={filteredAssets} 
                         exchangeRate={exchangeRate}
                         onAdd={handleAddAsset}
-                        onDelete={handleDeleteAsset}
+                        onDelete={handleDeleteClick}
                         onEdit={handleEditAsset}
                     />
                 </div>
@@ -393,6 +401,14 @@ const App: React.FC = () => {
         onSave={handleSaveAsset}
         initialType={modalType}
         editingAsset={editingAsset}
+      />
+
+      <ConfirmModal 
+        isOpen={!!deleteId}
+        title="確認刪除"
+        message="您確定要刪除這個項目嗎？此動作無法復原。"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
       />
     </div>
   );
