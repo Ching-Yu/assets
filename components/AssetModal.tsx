@@ -54,11 +54,11 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
       if (price !== null && price > 0) {
         setFormData(prev => ({ ...prev, currentPrice: price }));
       } else {
-        alert("無法找到此資產的價格，請手動輸入。");
+        alert("⚠️ 無法取得價格。\n\n可能原因：\n1. 代號輸入錯誤 (台股請輸入代號如 2330)。\n2. 網路連線問題。\n\n請改為手動輸入。");
       }
     } catch (e) {
       console.error(e);
-      alert("查詢發生錯誤。");
+      alert("查詢發生錯誤，請檢查網路連線。");
     } finally {
       setIsFetchingPrice(false);
     }
@@ -175,7 +175,7 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
             </div>
              {isCash && <p className="text-xs text-slate-500 mt-1">請輸入此帳戶的現金總額。</p>}
              {isLoan && <p className="text-xs text-slate-500 mt-1">請輸入目前剩餘的本金餘額。</p>}
-             {isStock && <p className="text-xs text-slate-500 mt-1">點擊搜尋按鈕可自動抓取最新市價 (需輸入代號)。</p>}
+             {isStock && <p className="text-xs text-slate-500 mt-1">點擊搜尋按鈕可自動抓取最新市價 (使用 Yahoo Finance 資料)。</p>}
           </div>
 
           <div>

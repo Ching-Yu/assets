@@ -12,7 +12,8 @@ export default defineConfig(({ mode }) => {
     base: './', // Ensures assets are linked relatively so it works on any path
     define: {
       // Allows using process.env.API_KEY in the code by replacing it with the build-time value
-      'process.env.API_KEY': JSON.stringify(env.API_KEY),
+      // If env.API_KEY is undefined, default to an empty string to prevent runtime crashes
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || ""),
     },
   };
 });

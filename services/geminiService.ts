@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Asset, AssetType } from "../types";
 
@@ -11,13 +12,19 @@ const SYSTEM_INSTRUCTION = `
 1. 資產配置平衡 (股票 vs 現金)。
 2. 產業集中度 (根據代碼如 2330, AAPL, NVDA 猜測產業)。
 3. 潛在風險 (例如：過度集中在科技股)。
-4. 簡短的鼓勵性總結。
-請保持在 300 字以內。適當使用表情符號。
+4. 針對目前的市場趨勢提供一段簡短的建議。
+5. 簡短的鼓勵性總結。
+請保持在 400 字以內。適當使用表情符號。
 `;
 
 export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: number): Promise<string> => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    return "⚠️ 尚未設定 API Key。\n\n如需使用 AI 分析功能，請確認環境變數中已包含 `API_KEY`。";
+  }
+
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     
     // Prepare data for the model
     const portfolioDesc = assets.map(a => {
@@ -44,11 +51,11 @@ export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: 
     
     ${portfolioDesc}
     
-    請分析我的投資組合結構。
+    請分析我的投資組合結構並提供專業建議。
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -63,67 +70,35 @@ export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: 
   }
 };
 
+/**
+ * Fetch Stock Price using Yahoo Finance (via CORS Proxy)
+ */
 export const fetchStockPrice = async (ticker: string, type: AssetType): Promise<number | null> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    let searchQuery = '';
-    
-    // Optimize query for Google Search to trigger Finance widget
+    let symbol = ticker.trim().toUpperCase();
+
     if (type === AssetType.TW_STOCK) {
-        // If it looks like a pure number (e.g., 2330), append .TW to ensure TWSE context
-        const cleanTicker = ticker.replace(/[^0-9a-zA-Z]/g, '');
-        if (/^\d{4}$/.test(cleanTicker)) {
-            searchQuery = `${cleanTicker}.TW stock price google finance`;
-        } else {
-            searchQuery = `${ticker} Taiwan stock price google finance`;
+        if (/^\d+$/.test(symbol)) {
+            symbol = `${symbol}.TW`;
         }
-    } else {
-        // US Stocks
-        searchQuery = `${ticker} stock price google finance`;
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: searchQuery,
-      config: {
-        tools: [{ googleSearch: {} }],
-        systemInstruction: `
-          You are a financial data assistant.
-          Task: Find the absolute LATEST market price for the stock ticker provided.
-          
-          CRITICAL INSTRUCTIONS:
-          1. Use the Google Search tool. Look specifically for data from Google Finance in the search results.
-          2. Return ONLY the numeric price value.
-          3. Do NOT include currency symbols ($, NT, etc.).
-          4. Do NOT include thousands separators (e.g., return 1450, not 1,450).
-          5. If the market is closed, return the closing price.
-          6. If the market is open, return the live price.
-          7. If you absolutely cannot find a price, return 0.
-          
-          Example Correct Outputs:
-          1450.00
-          181.46
-          
-          Example Incorrect Outputs:
-          1,450
-          $181.46
-          The price is 1450
-        `,
-      }
-    });
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
 
-    const text = response.text?.trim();
-    if (text) {
-      // Remove all non-numeric characters except the dot
-      const cleanPrice = text.replace(/[^0-9.]/g, '');
-      const price = parseFloat(cleanPrice);
-      return isNaN(price) ? null : price;
-    }
-    
-    return null;
+    const response = await fetch(proxyUrl);
+    if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
+
+    const data = await response.json();
+    const result = data?.chart?.result?.[0];
+    if (!result || !result.meta) return null;
+
+    const meta = result.meta;
+    const price = meta.regularMarketPrice || meta.previousClose;
+
+    return typeof price === 'number' ? price : null;
   } catch (error) {
-    console.error("Stock Price Fetch Error:", error);
+    console.error(`Stock Price Fetch Error (${ticker}):`, error);
     return null;
   }
 };
