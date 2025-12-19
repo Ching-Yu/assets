@@ -10,14 +10,15 @@ import GeminiAdvisor from './components/GeminiAdvisor';
 import CompoundCalculator from './components/CompoundCalculator';
 import HistoryTracker from './components/HistoryTracker';
 import SettingsModal from './components/SettingsModal';
+import AllocationTool from './components/AllocationTool';
 import Login from './components/Login';
 import { analyzePortfolioWithGemini, fetchStockPrice } from './services/geminiService';
-import { Wallet, TrendingUp, Calculator, LayoutDashboard, Eye, EyeOff, History, Settings, LogOut, Cloud } from 'lucide-react';
+import { Wallet, TrendingUp, Calculator, LayoutDashboard, Eye, EyeOff, History, Settings, LogOut, Cloud, Target } from 'lucide-react';
 import { auth, db } from './firebaseConfig';
 import { onAuthStateChanged, signOut, User, getRedirectResult } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-type ViewMode = 'DASHBOARD' | 'HISTORY' | 'CALCULATOR';
+type ViewMode = 'DASHBOARD' | 'HISTORY' | 'CALCULATOR' | 'ALLOCATION';
 
 const App: React.FC = () => {
   // --- Auth State ---
@@ -52,7 +53,6 @@ const App: React.FC = () => {
 
   // --- Auth & Data Fetching Effect ---
   useEffect(() => {
-    // Check for redirect result when the app mounts
     getRedirectResult(auth).catch((error) => {
         console.error("Redirect login result error:", error);
     });
@@ -64,7 +64,6 @@ const App: React.FC = () => {
       if (currentUser) {
         setDataLoading(true);
         try {
-          // Fetch data from Firestore
           const docRef = doc(db, "users", currentUser.uid);
           const docSnap = await getDoc(docRef);
 
@@ -75,10 +74,8 @@ const App: React.FC = () => {
             setExchangeRate(data.exchangeRate || DEFAULT_USD_TWD_RATE);
             if (data.aiAnalysis) setAiAnalysis(data.aiAnalysis);
           } else {
-            // New user: Init with mock or empty
             setAssets(MOCK_INITIAL_DATA as Asset[]);
             setHistory([]);
-            
             await setDoc(docRef, {
               assets: MOCK_INITIAL_DATA,
               history: [],
@@ -99,7 +96,6 @@ const App: React.FC = () => {
   // --- Cloud Sync Effect (Auto-save) ---
   useEffect(() => {
     if (!user || dataLoading) return;
-
     const saveData = async () => {
         try {
             await setDoc(doc(db, "users", user.uid), {
@@ -113,12 +109,40 @@ const App: React.FC = () => {
             console.error("Auto-save failed", e);
         }
     };
-
-    const timeoutId = setTimeout(saveData, 1000); // Debounce 1s
+    const timeoutId = setTimeout(saveData, 1000);
     return () => clearTimeout(timeoutId);
-
   }, [assets, history, exchangeRate, aiAnalysis, user, dataLoading]);
 
+  // --- Automatic Loan Repayment Check ---
+  useEffect(() => {
+    if (dataLoading || assets.length === 0) return;
+
+    const today = new Date();
+    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const currentDay = today.getDate();
+
+    let hasChanges = false;
+    const updatedAssets = assets.map(asset => {
+        if (asset.type === AssetType.LOAN_TWD && asset.repaymentDay && asset.monthlyRepayment) {
+            // Check if today is repayment day or later AND we haven't processed this month yet
+            if (currentDay >= asset.repaymentDay && asset.lastRepaymentMonth !== currentMonthKey) {
+                const newPrice = Math.max(0, asset.currentPrice - asset.monthlyRepayment);
+                hasChanges = true;
+                return {
+                    ...asset,
+                    currentPrice: newPrice,
+                    lastRepaymentMonth: currentMonthKey
+                };
+            }
+        }
+        return asset;
+    });
+
+    if (hasChanges) {
+        setAssets(updatedAssets);
+        console.log("Auto-repayment processed for some loans.");
+    }
+  }, [dataLoading, assets.length]); // Intentionally limited trigger to prevent infinite loops
 
   // Fetch Exchange Rate on mount
   useEffect(() => {
@@ -127,9 +151,7 @@ const App: React.FC = () => {
         try {
             const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
             const data = await res.json();
-            if (data?.rates?.TWD) {
-                setExchangeRate(data.rates.TWD);
-            }
+            if (data?.rates?.TWD) setExchangeRate(data.rates.TWD);
         } catch (error) {
             console.error("Failed to fetch exchange rate:", error);
         } finally {
@@ -316,10 +338,10 @@ const App: React.FC = () => {
                     <h1 className="text-xl font-bold tracking-tight text-white hidden sm:block">WealthFolio</h1>
                 </div>
                 <div className="flex bg-slate-800 p-1 rounded-lg overflow-x-auto no-scrollbar">
-                    {(['DASHBOARD', 'HISTORY', 'CALCULATOR'] as ViewMode[]).map(v => (
+                    {(['DASHBOARD', 'HISTORY', 'ALLOCATION', 'CALCULATOR'] as ViewMode[]).map(v => (
                         <button key={v} onClick={() => setView(v)} className={`px-3 py-1.5 rounded-md flex items-center gap-2 text-sm font-medium transition whitespace-nowrap ${view === v ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
-                            {v === 'DASHBOARD' ? <LayoutDashboard size={14} /> : v === 'HISTORY' ? <History size={14} /> : <Calculator size={14} />}
-                            {v === 'DASHBOARD' ? '總覽' : v === 'HISTORY' ? '歷史' : '試算'}
+                            {v === 'DASHBOARD' ? <LayoutDashboard size={14} /> : v === 'HISTORY' ? <History size={14} /> : v === 'ALLOCATION' ? <Target size={14} /> : <Calculator size={14} />}
+                            {v === 'DASHBOARD' ? '總覽' : v === 'HISTORY' ? '歷史' : v === 'ALLOCATION' ? '規劃' : '試算'}
                         </button>
                     ))}
                 </div>
@@ -361,6 +383,7 @@ const App: React.FC = () => {
             </>
         )}
         {view === 'HISTORY' && <HistoryTracker history={history} onUpdateRecord={handleUpdateRecord} />}
+        {view === 'ALLOCATION' && <AllocationTool assets={assets} exchangeRate={exchangeRate} />}
         {view === 'CALCULATOR' && <CompoundCalculator initialPrincipal={currentNetWorth > 0 ? currentNetWorth : 0} />}
       </main>
 

@@ -4,24 +4,28 @@ export enum AssetType {
   US_STOCK = 'US_STOCK',
   CASH_TWD = 'CASH_TWD',
   CASH_USD = 'CASH_USD',
-  LOAN_TWD = 'LOAN_TWD' // New: Credit Loan / Liabilities
+  LOAN_TWD = 'LOAN_TWD'
 }
 
 export interface Asset {
   id: string;
   type: AssetType;
-  name: string; // Ticker or Name (e.g., AAPL, 2330, 信貸)
-  shares: number; // For stocks. For loans, this can be 1.
-  costBasis: number; // Avg cost. For loans, this can be the interest rate (optional usage)
-  currentPrice: number; // Market price. For loans, this is the outstanding balance.
+  name: string;
+  shares: number;
+  costBasis: number; // For stocks: avg cost. For loans: interest rate.
+  currentPrice: number; // Market price. For loans: outstanding balance.
   note?: string;
+  // Automation fields for loans
+  repaymentDay?: number; // 1-31
+  monthlyRepayment?: number;
+  lastRepaymentMonth?: string; // YYYY-MM
 }
 
 export interface PortfolioSummary {
   totalAssetsTwd: number;
   totalLiabilitiesTwd: number;
   netWorthTwd: number;
-  totalValueUsd: number; // Net worth in USD
+  totalValueUsd: number;
   allocation: {
     name: string;
     value: number;
@@ -31,7 +35,7 @@ export interface PortfolioSummary {
 
 export interface HistoryRecord {
   id: string;
-  date: string; // YYYY-MM (e.g., "2023-10")
+  date: string;
   totalAssets: number;
   totalLiabilities: number;
   netWorth: number;

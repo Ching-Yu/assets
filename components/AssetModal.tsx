@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Asset, AssetType } from '../types';
-import { X, Search, Loader2 } from 'lucide-react';
+import { X, Search, Loader2, Calendar, CreditCard } from 'lucide-react';
 import { fetchStockPrice } from '../services/geminiService';
 
 interface AssetModalProps {
@@ -18,7 +18,9 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
     shares: 0,
     costBasis: 0,
     currentPrice: 0,
-    note: ''
+    note: '',
+    repaymentDay: 1,
+    monthlyRepayment: 0
   });
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
 
@@ -33,7 +35,9 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
             shares: 0,
             costBasis: 0,
             currentPrice: 0,
-            note: ''
+            note: '',
+            repaymentDay: 1,
+            monthlyRepayment: 0
         });
       }
     }
@@ -54,11 +58,10 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
       if (price !== null && price > 0) {
         setFormData(prev => ({ ...prev, currentPrice: price }));
       } else {
-        alert("⚠️ 無法取得價格。\n\n可能原因：\n1. 代號輸入錯誤 (台股請輸入代號如 2330)。\n2. 網路連線問題。\n\n請改為手動輸入。");
+        alert("⚠️ 無法取得價格。");
       }
     } catch (e) {
       console.error(e);
-      alert("查詢發生錯誤，請檢查網路連線。");
     } finally {
       setIsFetchingPrice(false);
     }
@@ -68,12 +71,13 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
     e.preventDefault();
     if (!formData.name) return;
     
-    // For cash/loan, shares are irrelevant, usually 1
     const payload = {
         ...formData,
         shares: (isCash || isLoan) ? 1 : Number(formData.shares),
         costBasis: Number(formData.costBasis),
         currentPrice: Number(formData.currentPrice),
+        repaymentDay: isLoan ? Number(formData.repaymentDay) : undefined,
+        monthlyRepayment: isLoan ? Number(formData.monthlyRepayment) : undefined,
     } as Asset;
 
     onSave(payload);
@@ -82,8 +86,8 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl border border-slate-700">
-        <div className="flex justify-between items-center p-6 border-b border-slate-700">
+      <div className="bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl border border-slate-700 max-h-[90vh] overflow-y-auto custom-scrollbar">
+        <div className="flex justify-between items-center p-6 border-b border-slate-700 sticky top-0 bg-slate-800 z-10">
           <h2 className="text-xl font-bold text-white">
             {editingAsset ? '編輯項目' : (isLoan ? '新增負債' : '新增資產')}
           </h2>
@@ -135,22 +139,49 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
           )}
           
           {isLoan && (
+            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
+               <div className="col-span-2 text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">自動扣款設定</div>
                <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1">年利率 (%) <span className="text-slate-600 text-xs font-normal">僅供紀錄</span></label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  value={formData.costBasis}
-                  onChange={e => setFormData({ ...formData, costBasis: parseFloat(e.target.value) })}
-                />
-              </div>
+                  <label className="block text-[10px] font-medium text-slate-500 mb-1 flex items-center gap-1">
+                    <Calendar size={12} /> 每月扣款日 (1-28)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="28"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+                    value={formData.repaymentDay}
+                    onChange={e => setFormData({ ...formData, repaymentDay: parseInt(e.target.value) })}
+                  />
+               </div>
+               <div>
+                  <label className="block text-[10px] font-medium text-slate-500 mb-1 flex items-center gap-1">
+                    <CreditCard size={12} /> 每月扣款金額
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+                    value={formData.monthlyRepayment}
+                    onChange={e => setFormData({ ...formData, monthlyRepayment: parseFloat(e.target.value) })}
+                  />
+               </div>
+               <div className="col-span-2">
+                  <label className="block text-[10px] font-medium text-slate-500 mb-1">年利率 (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+                    value={formData.costBasis}
+                    onChange={e => setFormData({ ...formData, costBasis: parseFloat(e.target.value) })}
+                  />
+               </div>
+            </div>
           )}
 
           <div>
             <label className="block text-sm font-medium text-slate-400 mb-1">
-              {isCash ? '總金額' : isLoan ? '剩餘未還金額' : '目前市價'}
+              {isCash ? '總金額' : isLoan ? '剩餘未還本金' : '目前市價'}
             </label>
             <div className="flex gap-2">
                 <input
@@ -167,15 +198,11 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
                         onClick={handleFetchPrice}
                         disabled={isFetchingPrice || !formData.name}
                         className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white p-3 rounded-lg transition"
-                        title="自動查詢股價"
                     >
                         {isFetchingPrice ? <Loader2 size={20} className="animate-spin" /> : <Search size={20} />}
                     </button>
                 )}
             </div>
-             {isCash && <p className="text-xs text-slate-500 mt-1">請輸入此帳戶的現金總額。</p>}
-             {isLoan && <p className="text-xs text-slate-500 mt-1">請輸入目前剩餘的本金餘額。</p>}
-             {isStock && <p className="text-xs text-slate-500 mt-1">點擊搜尋按鈕可自動抓取最新市價 (使用 Yahoo Finance 資料)。</p>}
           </div>
 
           <div>
@@ -187,7 +214,7 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
             />
           </div>
 
-          <div className="pt-4 flex gap-3">
+          <div className="pt-4 flex gap-3 sticky bottom-0 bg-slate-800 py-4">
              <button
               type="button"
               onClick={onClose}
