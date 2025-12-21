@@ -387,7 +387,14 @@ const App: React.FC = () => {
         {view === 'CALCULATOR' && <CompoundCalculator initialPrincipal={currentNetWorth > 0 ? currentNetWorth : 0} />}
       </main>
 
-      <AssetModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSaveAsset} initialType={modalType} editingAsset={editingAsset} />
+      <AssetModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSave={handleSaveAsset} 
+        onDelete={handleDeleteClick}
+        initialType={modalType} 
+        editingAsset={editingAsset} 
+      />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} exchangeRate={exchangeRate} setExchangeRate={setExchangeRate} onRefreshRate={handleRefreshRate} isRateLoading={isRateLoading} assets={assets} history={history} onImportData={handleImportData} />
       <ConfirmModal isOpen={!!deleteId} title="確認刪除" message="您確定要刪除這個項目嗎？此動作無法復原。" onConfirm={confirmDelete} onCancel={() => setDeleteId(null)} />
     </div>

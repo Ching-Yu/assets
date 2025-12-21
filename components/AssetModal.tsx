@@ -1,18 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { Asset, AssetType } from '../types';
-import { X, Search, Loader2, Calendar, CreditCard } from 'lucide-react';
+import { X, Search, Loader2, Calendar, CreditCard, Trash2 } from 'lucide-react';
 import { fetchStockPrice } from '../services/geminiService';
 
 interface AssetModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (asset: Omit<Asset, 'id'> | Asset) => void;
+  onDelete?: (id: string) => void;
   initialType?: AssetType;
   editingAsset?: Asset;
 }
 
-const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initialType, editingAsset }) => {
+const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDelete, initialType, editingAsset }) => {
   const [formData, setFormData] = useState<Partial<Asset>>({
     name: '',
     shares: 0,
@@ -58,7 +59,7 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
       if (price !== null && price > 0) {
         setFormData(prev => ({ ...prev, currentPrice: price }));
       } else {
-        alert("⚠️ 無法取得價格。");
+        alert("⚠️ 無法取得價格。請確認代號是否正確。");
       }
     } catch (e) {
       console.error(e);
@@ -82,6 +83,13 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
 
     onSave(payload);
     onClose();
+  };
+  
+  const handleDelete = () => {
+      if (editingAsset && onDelete) {
+          onDelete(editingAsset.id);
+          onClose();
+      }
   };
 
   return (
@@ -215,6 +223,16 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, initia
           </div>
 
           <div className="pt-4 flex gap-3 sticky bottom-0 bg-slate-800 py-4">
+             {editingAsset && onDelete && (
+                <button
+                    type="button"
+                    onClick={handleDelete}
+                    className="p-3 rounded-lg border border-rose-900/50 bg-rose-900/20 text-rose-400 hover:bg-rose-900/40 transition flex-shrink-0"
+                    title="刪除此項目"
+                >
+                    <Trash2 size={20} />
+                </button>
+             )}
              <button
               type="button"
               onClick={onClose}

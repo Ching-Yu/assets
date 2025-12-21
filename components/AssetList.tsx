@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Asset, AssetType } from '../types';
-import { Trash2, Edit2, Plus, TrendingUp, TrendingDown, PieChart, Banknote, Calendar, ArrowDownWideNarrow } from 'lucide-react';
+import { Trash2, Edit2, Plus, TrendingUp, TrendingDown, PieChart, Calendar, ArrowDownWideNarrow } from 'lucide-react';
 
 interface AssetListProps {
   assets: Asset[];
@@ -173,7 +173,9 @@ const AssetList: React.FC<AssetListProps> = ({ assets, typeFilter, exchangeRate,
                   {typeFilter === 'LIABILITIES' ? '利率 / 扣款設定' : '佔比'}
               </th>
               {typeFilter === 'STOCKS' && <th className="p-4 font-medium text-right">未實現損益</th>}
-               <th className="p-4 font-medium text-right w-24">操作</th>
+              
+              {/* Only show operation column if NOT stock filter (since stock row is clickable) */}
+              {typeFilter !== 'STOCKS' && <th className="p-4 font-medium text-right w-24">操作</th>}
             </tr>
           </thead>
           <tbody className={`divide-y text-sm ${typeFilter === 'LIABILITIES' ? 'divide-rose-900/30' : 'divide-slate-700/50'}`}>
@@ -201,7 +203,11 @@ const AssetList: React.FC<AssetListProps> = ({ assets, typeFilter, exchangeRate,
                         : 0;
                     
                     return (
-                    <tr key={asset.id} className={`transition-colors group ${isLoan ? 'hover:bg-rose-900/20' : 'hover:bg-slate-700/30'}`}>
+                    <tr 
+                        key={asset.id} 
+                        onClick={() => onEdit(asset)}
+                        className={`transition-colors group cursor-pointer ${isLoan ? 'hover:bg-rose-900/20' : 'hover:bg-slate-700/30'}`}
+                    >
                         <td className="p-4">
                         <div className="flex items-center gap-3">
                             <div className={`w-2 h-8 rounded-full ${
@@ -271,24 +277,27 @@ const AssetList: React.FC<AssetListProps> = ({ assets, typeFilter, exchangeRate,
                                 </div>
                             </td>
                         )}
-                        <td className="p-4 text-right">
-                            <div className="flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                                <button 
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); onEdit(asset); }} 
-                                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-600 rounded"
-                                >
-                                    <Edit2 size={16} />
-                                </button>
-                                <button 
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); onDelete(asset.id); }} 
-                                    className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-600 rounded"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                            </div>
-                        </td>
+                        
+                        {typeFilter !== 'STOCKS' && (
+                            <td className="p-4 text-right">
+                                <div className="flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); onEdit(asset); }} 
+                                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-600 rounded"
+                                    >
+                                        <Edit2 size={16} />
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); onDelete(asset.id); }} 
+                                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-600 rounded"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </td>
+                        )}
                     </tr>
                     );
                 })

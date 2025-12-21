@@ -71,27 +71,46 @@ export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: 
 };
 
 /**
- * Fetch Stock Price using Yahoo Finance (via CORS Proxy)
+ * Fetch Stock Price using Yahoo Finance (via corsproxy.io)
  */
 export const fetchStockPrice = async (ticker: string, type: AssetType): Promise<number | null> => {
   try {
-    let symbol = ticker.trim().toUpperCase();
+    let symbol = ticker.trim();
 
+    // Intelligent Symbol Parsing
     if (type === AssetType.TW_STOCK) {
-        if (/^\d+$/.test(symbol)) {
-            symbol = `${symbol}.TW`;
+        // 1. Try to extract 4 or more digits (e.g., "2330 台積電" -> "2330")
+        const match = symbol.match(/(\d{4,})/);
+        if (match) {
+            symbol = `${match[1]}.TW`;
+        } else {
+             // 2. If no digits found, keep as is. If only digits provided, append .TW
+             if (/^\d+$/.test(symbol)) {
+                 symbol = `${symbol}.TW`;
+             }
         }
+    } else {
+        // For US stocks, assume the first word is the ticker (e.g., "NVDA Corp" -> "NVDA")
+        symbol = symbol.split(' ')[0].toUpperCase();
     }
 
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
+    // Add cache buster timestamp
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d&nocache=${Date.now()}`;
+    
+    // Use corsproxy.io for better stability
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`;
 
     const response = await fetch(proxyUrl);
     if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
 
     const data = await response.json();
     const result = data?.chart?.result?.[0];
-    if (!result || !result.meta) return null;
+    
+    if (!result || !result.meta) {
+        // Fallback for some cases or just log warning
+        console.warn(`No price data found for ${symbol}`);
+        return null;
+    }
 
     const meta = result.meta;
     const price = meta.regularMarketPrice || meta.previousClose;
