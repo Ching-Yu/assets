@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Asset, AssetType } from '../types';
-import { X, Search, Loader2, Calendar, CreditCard, Trash2 } from 'lucide-react';
+import { Asset, AssetType, AssetSector } from '../types';
+import { SECTOR_LABELS } from '../constants';
+import { X, Search, Loader2, Calendar, CreditCard, Trash2, PieChart } from 'lucide-react';
 import { fetchStockPrice } from '../services/geminiService';
 
 interface AssetModalProps {
@@ -21,7 +22,8 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
     currentPrice: 0,
     note: '',
     repaymentDay: 1,
-    monthlyRepayment: 0
+    monthlyRepayment: 0,
+    sector: AssetSector.OTHER
   });
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
 
@@ -38,7 +40,8 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
             currentPrice: 0,
             note: '',
             repaymentDay: 1,
-            monthlyRepayment: 0
+            monthlyRepayment: 0,
+            sector: AssetSector.OTHER
         });
       }
     }
@@ -78,7 +81,8 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
         shares: (isCash || isLoan) ? 1 : Number(formData.shares || 0),
         costBasis: Number(formData.costBasis || 0),
         currentPrice: Number(formData.currentPrice || 0),
-        note: formData.note || ""
+        note: formData.note || "",
+        sector: formData.sector || AssetSector.OTHER
     };
 
     if (isLoan) {
@@ -155,6 +159,23 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
                 />
               </div>
             </div>
+          )}
+          
+          {isStock && (
+             <div>
+                <label className="block text-sm font-medium text-slate-400 mb-1 flex items-center gap-1">
+                    <PieChart size={14} /> 產業類別 (用於圓餅圖分析)
+                </label>
+                <select
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none"
+                    value={formData.sector || AssetSector.OTHER}
+                    onChange={e => setFormData({ ...formData, sector: e.target.value as AssetSector })}
+                >
+                    {Object.entries(SECTOR_LABELS).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                    ))}
+                </select>
+             </div>
           )}
           
           {isLoan && (

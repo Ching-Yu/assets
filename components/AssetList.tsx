@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Asset, AssetType } from '../types';
-import { Trash2, Edit2, Plus, TrendingUp, TrendingDown, PieChart, Calendar, ArrowDownWideNarrow } from 'lucide-react';
+import { Trash2, Edit2, Plus, TrendingUp, TrendingDown, PieChart, Calendar, ArrowDownWideNarrow, ArrowUpDown } from 'lucide-react';
 
 interface AssetListProps {
   assets: Asset[];
@@ -12,9 +12,11 @@ interface AssetListProps {
   onAdd: (type: AssetType) => void;
 }
 
+type SortMode = 'DEFAULT' | 'PERCENT' | 'GAIN';
+
 const AssetList: React.FC<AssetListProps> = ({ assets, typeFilter, exchangeRate, onDelete, onEdit, onAdd }) => {
   const [activeTab, setActiveTab] = useState<'ALL' | 'TW' | 'US'>('ALL');
-  const [isSortedByPercent, setIsSortedByPercent] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('DEFAULT');
 
   // Calculate Total Value for % calculation
   const totalCategoryValueTwd = useMemo(() => {
@@ -39,6 +41,29 @@ const AssetList: React.FC<AssetListProps> = ({ assets, typeFilter, exchangeRate,
     }, 0);
   }, [assets, exchangeRate, typeFilter]);
 
+  // Calculate Total Gain for Stocks in TWD
+  const totalUnrealizedGainTwd = useMemo(() => {
+    if (typeFilter !== 'STOCKS') return 0;
+    
+    return assets.reduce((sum, asset) => {
+        const isTw = asset.type === AssetType.TW_STOCK;
+        const isUs = asset.type === AssetType.US_STOCK;
+        
+        if (!isTw && !isUs) return sum;
+        
+        // Filter by Tab (TW/US/ALL)
+        if (activeTab === 'TW' && !isTw) return sum;
+        if (activeTab === 'US' && !isUs) return sum;
+
+        const cost = asset.shares * asset.costBasis;
+        const current = asset.shares * asset.currentPrice;
+        const gain = current - cost;
+        
+        const gainInTwd = isUs ? gain * exchangeRate : gain;
+        return sum + gainInTwd;
+    }, 0);
+  }, [assets, exchangeRate, typeFilter, activeTab]);
+
   const displayAssets = useMemo(() => {
     // 1. First Filter
     let list = assets.filter(asset => {
@@ -54,20 +79,29 @@ const AssetList: React.FC<AssetListProps> = ({ assets, typeFilter, exchangeRate,
         return asset.type === AssetType.TW_STOCK || asset.type === AssetType.US_STOCK;
     });
 
-    // 2. Then Sort if enabled
-    if (isSortedByPercent && typeFilter !== 'LIABILITIES') {
+    // 2. Sort Logic
+    if (sortMode !== 'DEFAULT' && typeFilter !== 'LIABILITIES') {
         list = [...list].sort((a, b) => {
-            const getVal = (item: Asset) => {
-                const isUs = item.type === AssetType.US_STOCK || item.type === AssetType.CASH_USD;
-                const baseVal = (item.type.includes('CASH') || item.type.includes('LOAN')) ? item.currentPrice : (item.shares * item.currentPrice);
-                return isUs ? baseVal * exchangeRate : baseVal;
-            };
-            return getVal(b) - getVal(a);
+            if (sortMode === 'PERCENT') {
+                const getVal = (item: Asset) => {
+                    const isUs = item.type === AssetType.US_STOCK || item.type === AssetType.CASH_USD;
+                    const baseVal = (item.type.includes('CASH') || item.type.includes('LOAN')) ? item.currentPrice : (item.shares * item.currentPrice);
+                    return isUs ? baseVal * exchangeRate : baseVal;
+                };
+                return getVal(b) - getVal(a);
+            } else if (sortMode === 'GAIN') {
+                const getGain = (item: Asset) => {
+                    const gain = (item.shares * item.currentPrice) - (item.shares * item.costBasis);
+                    return item.type.includes('US') ? gain * exchangeRate : gain;
+                };
+                return getGain(b) - getGain(a);
+            }
+            return 0;
         });
     }
 
     return list;
-  }, [assets, activeTab, typeFilter, isSortedByPercent, exchangeRate]);
+  }, [assets, activeTab, typeFilter, sortMode, exchangeRate]);
 
   const getCurrencySymbol = (type: AssetType) => {
     return (type === AssetType.US_STOCK || type === AssetType.CASH_USD) ? 'US$' : 'NT$';
@@ -93,70 +127,93 @@ const AssetList: React.FC<AssetListProps> = ({ assets, typeFilter, exchangeRate,
   return (
     <div className={`rounded-2xl shadow-lg overflow-hidden ${typeFilter === 'LIABILITIES' ? 'bg-rose-950/20 border border-rose-900/50' : 'bg-slate-800'}`}>
       {/* Header & Tabs */}
-      <div className="p-6 border-b border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h3 className={`text-xl font-bold mb-1 ${typeFilter === 'LIABILITIES' ? 'text-rose-100' : 'text-white'}`}>
-            {getHeaderTitle()}
-          </h3>
-          <p className={`text-sm ${typeFilter === 'LIABILITIES' ? 'text-rose-300/70' : 'text-slate-400'}`}>
-            {typeFilter === 'LIABILITIES' ? '管理信貸與每月扣款設定' : '管理你的資產配置'}
-          </p>
-        </div>
+      <div className="p-6 border-b border-slate-700 flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+                <h3 className={`text-xl font-bold mb-1 ${typeFilter === 'LIABILITIES' ? 'text-rose-100' : 'text-white'}`}>
+                    {getHeaderTitle()}
+                </h3>
+                <p className={`text-sm ${typeFilter === 'LIABILITIES' ? 'text-rose-300/70' : 'text-slate-400'}`}>
+                    {typeFilter === 'LIABILITIES' ? '管理信貸與每月扣款設定' : '管理你的資產配置'}
+                </p>
+            </div>
 
-        <div className="flex items-center gap-3">
-            {typeFilter === 'STOCKS' && (
-                <div className="bg-slate-900 p-1 rounded-lg flex items-center text-xs font-medium gap-1">
-                    <div className="flex">
-                        {(['ALL', 'TW', 'US'] as const).map(tab => (
-                            <button
-                                key={tab}
-                                onClick={() => setActiveTab(tab)}
-                                className={`px-3 py-1.5 rounded-md transition-colors ${activeTab === tab ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                {tab === 'TW' ? '🇹🇼 台股' : tab === 'US' ? '🇺🇸 美股' : '全部'}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="w-px h-4 bg-slate-700 mx-1"></div>
-                    <button
-                        onClick={() => setIsSortedByPercent(!isSortedByPercent)}
-                        title={isSortedByPercent ? "切換回預設排序" : "按佔比排序 (高到低)"}
-                        className={`p-1.5 rounded-md transition-all flex items-center gap-1.5 ${isSortedByPercent ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-500 hover:text-slate-300'}`}
-                    >
-                        <ArrowDownWideNarrow size={16} />
-                        <span className="hidden sm:inline">佔比排序</span>
-                    </button>
-                </div>
-            )}
-            
-            <div className="flex gap-2">
-                {typeFilter === 'CASH' && (
-                    <>
-                        <button onClick={() => onAdd(AssetType.CASH_TWD)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
-                            <Plus size={16} /> 台幣
-                        </button>
-                        <button onClick={() => onAdd(AssetType.CASH_USD)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
-                            <Plus size={16} /> 美金
-                        </button>
-                    </>
-                )}
-                {typeFilter === 'LIABILITIES' && (
-                    <button onClick={() => onAdd(AssetType.LOAN_TWD)} className="bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
-                        <Plus size={16} /> 新增負債
-                    </button>
-                )}
+            <div className="flex flex-wrap items-center gap-2">
                 {typeFilter === 'STOCKS' && (
-                    <>
-                        <button onClick={() => onAdd(AssetType.TW_STOCK)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
-                            <Plus size={16} /> 台股
+                    <div className="bg-slate-900 p-1 rounded-lg flex items-center text-xs font-medium gap-1">
+                        <div className="flex">
+                            {(['ALL', 'TW', 'US'] as const).map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setActiveTab(tab)}
+                                    className={`px-3 py-1.5 rounded-md transition-colors ${activeTab === tab ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                                >
+                                    {tab === 'TW' ? '🇹🇼 台股' : tab === 'US' ? '🇺🇸 美股' : '全部'}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="w-px h-4 bg-slate-700 mx-1"></div>
+                        <button
+                            onClick={() => setSortMode(sortMode === 'PERCENT' ? 'DEFAULT' : 'PERCENT')}
+                            title="按佔比排序 (高到低)"
+                            className={`p-1.5 rounded-md transition-all flex items-center gap-1.5 ${sortMode === 'PERCENT' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                            <ArrowDownWideNarrow size={16} />
+                            <span className="hidden sm:inline">佔比</span>
                         </button>
-                        <button onClick={() => onAdd(AssetType.US_STOCK)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
-                            <Plus size={16} /> 美股
+                         <button
+                            onClick={() => setSortMode(sortMode === 'GAIN' ? 'DEFAULT' : 'GAIN')}
+                            title="按損益金額排序 (高到低)"
+                            className={`p-1.5 rounded-md transition-all flex items-center gap-1.5 ${sortMode === 'GAIN' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                            <ArrowUpDown size={16} />
+                            <span className="hidden sm:inline">損益</span>
                         </button>
-                    </>
+                    </div>
                 )}
+                
+                <div className="flex gap-2">
+                    {typeFilter === 'CASH' && (
+                        <>
+                            <button onClick={() => onAdd(AssetType.CASH_TWD)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
+                                <Plus size={16} /> 台幣
+                            </button>
+                            <button onClick={() => onAdd(AssetType.CASH_USD)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
+                                <Plus size={16} /> 美金
+                            </button>
+                        </>
+                    )}
+                    {typeFilter === 'LIABILITIES' && (
+                        <button onClick={() => onAdd(AssetType.LOAN_TWD)} className="bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
+                            <Plus size={16} /> 新增負債
+                        </button>
+                    )}
+                    {typeFilter === 'STOCKS' && (
+                        <>
+                            <button onClick={() => onAdd(AssetType.TW_STOCK)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
+                                <Plus size={16} /> 台股
+                            </button>
+                            <button onClick={() => onAdd(AssetType.US_STOCK)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1 transition">
+                                <Plus size={16} /> 美股
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
+
+        {/* Total Profit/Loss Summary Bar for Stocks */}
+        {typeFilter === 'STOCKS' && assets.length > 0 && (
+            <div className={`rounded-xl p-3 flex items-center justify-between border ${totalUnrealizedGainTwd >= 0 ? 'bg-emerald-900/10 border-emerald-500/20' : 'bg-rose-900/10 border-rose-500/20'}`}>
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                    <TrendingUp size={16} className={totalUnrealizedGainTwd >= 0 ? 'text-emerald-500' : 'text-rose-500'}/>
+                    未實現損益總和 (預估)
+                </div>
+                <div className={`font-bold font-mono text-lg ${totalUnrealizedGainTwd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {totalUnrealizedGainTwd >= 0 ? '+' : '-'}NT$ {Math.abs(totalUnrealizedGainTwd).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </div>
+            </div>
+        )}
       </div>
 
       {/* List / Table */}

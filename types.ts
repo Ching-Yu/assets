@@ -7,6 +7,16 @@ export enum AssetType {
   LOAN_TWD = 'LOAN_TWD'
 }
 
+export enum AssetSector {
+  ETF = 'ETF',
+  SEMICONDUCTOR = 'SEMICONDUCTOR', // 半導體
+  TECH = 'TECH', // 科技 (軟體/硬體)
+  FINANCE = 'FINANCE', // 金融
+  TRADITIONAL = 'TRADITIONAL', // 傳產
+  CRYPTO = 'CRYPTO', // 加密貨幣相關
+  OTHER = 'OTHER' // 其他
+}
+
 export interface Asset {
   id: string;
   type: AssetType;
@@ -15,6 +25,7 @@ export interface Asset {
   costBasis: number; // For stocks: avg cost. For loans: interest rate.
   currentPrice: number; // Market price. For loans: outstanding balance.
   note?: string;
+  sector?: AssetSector; // New field for sector allocation
   // Automation fields for loans
   repaymentDay?: number; // 1-31
   monthlyRepayment?: number;
