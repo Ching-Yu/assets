@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { Asset, AssetType, AssetSector } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { TrendingUp, Wallet, Globe, ArrowDownCircle, Activity, Landmark, PieChart as PieIcon } from 'lucide-react';
-import { SECTOR_COLORS, SECTOR_LABELS } from '../constants';
+import { SECTOR_COLORS, SECTOR_LABELS, detectSector } from '../constants';
 
 interface DashboardProps {
   assets: Asset[];
@@ -71,7 +71,12 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
           let val = asset.shares * asset.currentPrice;
           if (asset.type.includes('US')) val *= exchangeRate;
           
-          const sector = asset.sector || AssetSector.OTHER;
+          // Use existing sector, or auto-detect if missing/OTHER
+          let sector = asset.sector;
+          if (!sector || sector === AssetSector.OTHER) {
+              sector = detectSector(asset.name);
+          }
+          
           sectorMap.set(sector, (sectorMap.get(sector) || 0) + val);
       });
 
