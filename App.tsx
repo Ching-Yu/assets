@@ -93,23 +93,40 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  /**
+   * Deeply cleans an object to remove undefined values, replacing them with null,
+   * which Firestore accepts.
+   */
+  const cleanForFirestore = (obj: any): any => {
+    if (Array.isArray(obj)) {
+      return obj.map(item => cleanForFirestore(item));
+    } else if (obj !== null && typeof obj === 'object') {
+      return Object.entries(obj).reduce((acc, [key, value]) => {
+        acc[key] = value === undefined ? null : cleanForFirestore(value);
+        return acc;
+      }, {} as any);
+    }
+    return obj;
+  };
+
   // --- Cloud Sync Effect (Auto-save) ---
   useEffect(() => {
     if (!user || dataLoading) return;
     const saveData = async () => {
         try {
-            await setDoc(doc(db, "users", user.uid), {
+            const dataToSave = cleanForFirestore({
                 assets,
                 history,
                 exchangeRate,
                 aiAnalysis,
                 lastUpdated: new Date().toISOString()
-            }, { merge: true });
+            });
+            await setDoc(doc(db, "users", user.uid), dataToSave, { merge: true });
         } catch (e) {
             console.error("Auto-save failed", e);
         }
     };
-    const timeoutId = setTimeout(saveData, 1000);
+    const timeoutId = setTimeout(saveData, 2000); // 2 second throttle
     return () => clearTimeout(timeoutId);
   }, [assets, history, exchangeRate, aiAnalysis, user, dataLoading]);
 
@@ -124,7 +141,6 @@ const App: React.FC = () => {
     let hasChanges = false;
     const updatedAssets = assets.map(asset => {
         if (asset.type === AssetType.LOAN_TWD && asset.repaymentDay && asset.monthlyRepayment) {
-            // Check if today is repayment day or later AND we haven't processed this month yet
             if (currentDay >= asset.repaymentDay && asset.lastRepaymentMonth !== currentMonthKey) {
                 const newPrice = Math.max(0, asset.currentPrice - asset.monthlyRepayment);
                 hasChanges = true;
@@ -140,9 +156,8 @@ const App: React.FC = () => {
 
     if (hasChanges) {
         setAssets(updatedAssets);
-        console.log("Auto-repayment processed for some loans.");
     }
-  }, [dataLoading, assets.length]); // Intentionally limited trigger to prevent infinite loops
+  }, [dataLoading, assets.length]);
 
   // Fetch Exchange Rate on mount
   useEffect(() => {
@@ -227,9 +242,9 @@ const App: React.FC = () => {
 
   const handleSaveAsset = (assetData: Asset | Omit<Asset, 'id'>) => {
     if ('id' in assetData) {
-      setAssets(prev => prev.map(a => a.id === assetData.id ? assetData : a));
+      setAssets(prev => prev.map(a => a.id === assetData.id ? (assetData as Asset) : a));
     } else {
-      const newAsset: Asset = { ...assetData, id: crypto.randomUUID() };
+      const newAsset: Asset = { ...assetData, id: crypto.randomUUID() } as Asset;
       setAssets(prev => [...prev, newAsset]);
     }
   };

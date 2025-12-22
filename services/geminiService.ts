@@ -71,53 +71,104 @@ export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: 
 };
 
 /**
- * Fetch Stock Price using Yahoo Finance (via corsproxy.io)
+ * Fetch Stock Price using multiple proxy strategies
  */
 export const fetchStockPrice = async (ticker: string, type: AssetType): Promise<number | null> => {
-  try {
-    let symbol = ticker.trim();
+  let symbol = ticker.trim();
 
-    // Intelligent Symbol Parsing
-    if (type === AssetType.TW_STOCK) {
-        // 1. Try to extract 4 or more digits (e.g., "2330 台積電" -> "2330")
-        const match = symbol.match(/(\d{4,})/);
-        if (match) {
-            symbol = `${match[1]}.TW`;
-        } else {
-             // 2. If no digits found, keep as is. If only digits provided, append .TW
-             if (/^\d+$/.test(symbol)) {
-                 symbol = `${symbol}.TW`;
-             }
-        }
-    } else {
-        // For US stocks, assume the first word is the ticker (e.g., "NVDA Corp" -> "NVDA")
-        symbol = symbol.split(' ')[0].toUpperCase();
+  // 1. Symbol Parsing Logic
+  if (type === AssetType.TW_STOCK) {
+    // Handle Taiwan stocks (e.g., "2330 台積電" -> "2330.TW")
+    const match = symbol.match(/(\d{4,})/);
+    if (match) {
+        symbol = `${match[1]}.TW`;
+    } else if (/^\d+$/.test(symbol)) {
+        symbol = `${symbol}.TW`;
     }
-
-    // Add cache buster timestamp
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d&nocache=${Date.now()}`;
-    
-    // Use corsproxy.io for better stability
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`;
-
-    const response = await fetch(proxyUrl);
-    if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
-
-    const data = await response.json();
-    const result = data?.chart?.result?.[0];
-    
-    if (!result || !result.meta) {
-        // Fallback for some cases or just log warning
-        console.warn(`No price data found for ${symbol}`);
-        return null;
-    }
-
-    const meta = result.meta;
-    const price = meta.regularMarketPrice || meta.previousClose;
-
-    return typeof price === 'number' ? price : null;
-  } catch (error) {
-    console.error(`Stock Price Fetch Error (${ticker}):`, error);
-    return null;
+  } else {
+    // Handle US Tickers (e.g., "NVDA Corp" -> "NVDA")
+    symbol = symbol.split(/[\s,]+/)[0].toUpperCase();
   }
+
+  // Use query2 and add timestamp to prevent caching
+  const targetUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d&ts=${Date.now()}`;
+
+  // 2. Define Proxy Strategies
+  // Public proxies are rate-limited, so we rotate through multiple providers.
+  const strategies = [
+    {
+        name: 'allorigins-raw',
+        // Direct raw access often works better and faster than the JSON wrapper
+        url: (target: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
+        extract: async (res: Response) => res.json()
+    },
+    {
+        name: 'corsproxy',
+        url: (target: string) => `https://corsproxy.io/?${encodeURIComponent(target)}`,
+        extract: async (res: Response) => res.json()
+    },
+    {
+        name: 'thingproxy',
+        url: (target: string) => `https://thingproxy.freeboard.io/fetch/${target}`,
+        extract: async (res: Response) => res.json()
+    },
+    {
+        // Fallback to the JSON wrapper version of allorigins if raw fails
+        name: 'allorigins-json',
+        url: (target: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`,
+        extract: async (res: Response) => {
+            const json = await res.json();
+            if (!json.contents) throw new Error('No contents');
+            return JSON.parse(json.contents);
+        }
+    }
+  ];
+
+  // 3. Execute Strategies Sequentially
+  for (const strategy of strategies) {
+      try {
+          // Timeout limit for each request to avoid hanging
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout per proxy
+
+          const response = await fetch(strategy.url(targetUrl), { 
+              signal: controller.signal,
+              headers: { 'Accept': 'application/json' }
+          });
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+              // console.warn(`[StockFetch] ${strategy.name} failed with status ${response.status}`);
+              continue;
+          }
+
+          const data = await strategy.extract(response);
+          const price = extractPrice(data, symbol);
+
+          if (price !== null) {
+              return price;
+          }
+      } catch (e) {
+          // Silent fail for individual strategy, try next
+          // console.warn(`[StockFetch] ${strategy.name} failed for ${symbol}:`, e);
+      }
+  }
+
+  console.error(`[StockFetch] All strategies failed for ${symbol}`);
+  return null;
 };
+
+/**
+ * Helper to extract price from Yahoo Finance response data
+ */
+function extractPrice(data: any, symbol: string): number | null {
+  try {
+      const result = data?.chart?.result?.[0];
+      if (!result || !result.meta) return null;
+      
+      const price = result.meta.regularMarketPrice || result.meta.previousClose;
+      return typeof price === 'number' ? price : null;
+  } catch (e) {
+      return null;
+  }
+}

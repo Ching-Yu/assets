@@ -72,16 +72,26 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
     e.preventDefault();
     if (!formData.name) return;
     
-    const payload = {
+    // Construct payload carefully to avoid "undefined" values which Firebase rejects
+    const payload: any = {
         ...formData,
-        shares: (isCash || isLoan) ? 1 : Number(formData.shares),
-        costBasis: Number(formData.costBasis),
-        currentPrice: Number(formData.currentPrice),
-        repaymentDay: isLoan ? Number(formData.repaymentDay) : undefined,
-        monthlyRepayment: isLoan ? Number(formData.monthlyRepayment) : undefined,
-    } as Asset;
+        shares: (isCash || isLoan) ? 1 : Number(formData.shares || 0),
+        costBasis: Number(formData.costBasis || 0),
+        currentPrice: Number(formData.currentPrice || 0),
+        note: formData.note || ""
+    };
 
-    onSave(payload);
+    if (isLoan) {
+        payload.repaymentDay = Number(formData.repaymentDay || 1);
+        payload.monthlyRepayment = Number(formData.monthlyRepayment || 0);
+    } else {
+        // Delete keys instead of setting to undefined
+        delete payload.repaymentDay;
+        delete payload.monthlyRepayment;
+        delete payload.lastRepaymentMonth;
+    }
+
+    onSave(payload as Asset);
     onClose();
   };
   
@@ -129,7 +139,8 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
                   required
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   value={formData.shares}
-                  onChange={e => setFormData({ ...formData, shares: parseFloat(e.target.value) })}
+                  // 使用 as any 暫存字串，避免 React 在輸入小數點時重新渲染導致小數點消失
+                  onChange={e => setFormData({ ...formData, shares: e.target.value as any })}
                 />
               </div>
               <div>
@@ -140,7 +151,7 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
                   required
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   value={formData.costBasis}
-                  onChange={e => setFormData({ ...formData, costBasis: parseFloat(e.target.value) })}
+                  onChange={e => setFormData({ ...formData, costBasis: e.target.value as any })}
                 />
               </div>
             </div>
@@ -159,7 +170,7 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
                     max="28"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
                     value={formData.repaymentDay}
-                    onChange={e => setFormData({ ...formData, repaymentDay: parseInt(e.target.value) })}
+                    onChange={e => setFormData({ ...formData, repaymentDay: e.target.value as any })}
                   />
                </div>
                <div>
@@ -171,7 +182,7 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
                     min="0"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
                     value={formData.monthlyRepayment}
-                    onChange={e => setFormData({ ...formData, monthlyRepayment: parseFloat(e.target.value) })}
+                    onChange={e => setFormData({ ...formData, monthlyRepayment: e.target.value as any })}
                   />
                </div>
                <div className="col-span-2">
@@ -181,7 +192,7 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
                     step="0.01"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
                     value={formData.costBasis}
-                    onChange={e => setFormData({ ...formData, costBasis: parseFloat(e.target.value) })}
+                    onChange={e => setFormData({ ...formData, costBasis: e.target.value as any })}
                   />
                </div>
             </div>
@@ -198,7 +209,7 @@ const AssetModal: React.FC<AssetModalProps> = ({ isOpen, onClose, onSave, onDele
                 required
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 value={formData.currentPrice}
-                onChange={e => setFormData({ ...formData, currentPrice: parseFloat(e.target.value) })}
+                onChange={e => setFormData({ ...formData, currentPrice: e.target.value as any })}
                 />
                 {isStock && (
                     <button 
