@@ -209,7 +209,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
 
         {hasData && (
             <div className="mt-4 flex flex-wrap gap-2 justify-center text-[10px] text-slate-400 max-h-24 overflow-y-auto w-full custom-scrollbar">
-                {summary.assetAllocation.slice(0, 5).map((entry, index) => (
+                {summary.assetAllocation.map((entry, index) => (
                     <div key={index} className="flex items-center gap-1.5 bg-slate-700/30 px-2 py-1 rounded-full">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}></div>
                         <span className="truncate max-w-[80px]">{entry.name}</span>
