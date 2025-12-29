@@ -22,14 +22,22 @@ export interface Asset {
   type: AssetType;
   name: string;
   shares: number;
-  costBasis: number; // For stocks: avg cost. For loans: interest rate.
-  currentPrice: number; // Market price. For loans: outstanding balance.
+  costBasis: number; 
+  currentPrice: number; 
   note?: string;
-  sector?: AssetSector; // New field for sector allocation
-  // Automation fields for loans
-  repaymentDay?: number; // 1-31
+  sector?: AssetSector;
+  repaymentDay?: number; 
   monthlyRepayment?: number;
-  lastRepaymentMonth?: string; // YYYY-MM
+  lastRepaymentMonth?: string; 
+}
+
+export interface InvestmentRecord {
+  id: string;
+  date: string; // YYYY-MM
+  assetName: string;
+  amount: number;
+  currency: 'TWD' | 'USD';
+  note?: string;
 }
 
 export interface PortfolioSummary {

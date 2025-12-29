@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Asset, AssetType, HistoryRecord } from './types';
+import { Asset, AssetType, HistoryRecord, InvestmentRecord } from './types';
 import { DEFAULT_USD_TWD_RATE, MOCK_INITIAL_DATA } from './constants';
 import Dashboard from './components/Dashboard';
 import AssetList from './components/AssetList';
@@ -11,14 +11,15 @@ import CompoundCalculator from './components/CompoundCalculator';
 import HistoryTracker from './components/HistoryTracker';
 import SettingsModal from './components/SettingsModal';
 import AllocationTool from './components/AllocationTool';
+import InvestmentLogs from './components/InvestmentLogs';
 import Login from './components/Login';
 import { analyzePortfolioWithGemini, fetchStockPrice } from './services/geminiService';
-import { Wallet, TrendingUp, Calculator, LayoutDashboard, Eye, EyeOff, History, Settings, LogOut, Cloud, Target } from 'lucide-react';
+import { Wallet, TrendingUp, Calculator, LayoutDashboard, Eye, EyeOff, History, Settings, LogOut, Cloud, Target, PiggyBank } from 'lucide-react';
 import { auth, db } from './firebaseConfig';
 import { onAuthStateChanged, signOut, User, getRedirectResult } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-type ViewMode = 'DASHBOARD' | 'HISTORY' | 'CALCULATOR' | 'ALLOCATION';
+type ViewMode = 'DASHBOARD' | 'HISTORY' | 'ALLOCATION' | 'CALCULATOR' | 'INVESTMENTS';
 
 const App: React.FC = () => {
   // --- Auth State ---
@@ -29,6 +30,7 @@ const App: React.FC = () => {
   // --- App State ---
   const [assets, setAssets] = useState<Asset[]>([]);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const [investments, setInvestments] = useState<InvestmentRecord[]>([]);
   const [exchangeRate, setExchangeRate] = useState<number>(DEFAULT_USD_TWD_RATE);
   
   const [isRateLoading, setIsRateLoading] = useState(false);
@@ -71,14 +73,17 @@ const App: React.FC = () => {
             const data = docSnap.data();
             setAssets(data.assets || []);
             setHistory(data.history || []);
+            setInvestments(data.investments || []);
             setExchangeRate(data.exchangeRate || DEFAULT_USD_TWD_RATE);
             if (data.aiAnalysis) setAiAnalysis(data.aiAnalysis);
           } else {
             setAssets(MOCK_INITIAL_DATA as Asset[]);
             setHistory([]);
+            setInvestments([]);
             await setDoc(docRef, {
               assets: MOCK_INITIAL_DATA,
               history: [],
+              investments: [],
               exchangeRate: DEFAULT_USD_TWD_RATE
             });
           }
@@ -93,10 +98,6 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  /**
-   * Deeply cleans an object to remove undefined values, replacing them with null,
-   * which Firestore accepts.
-   */
   const cleanForFirestore = (obj: any): any => {
     if (Array.isArray(obj)) {
       return obj.map(item => cleanForFirestore(item));
@@ -117,6 +118,7 @@ const App: React.FC = () => {
             const dataToSave = cleanForFirestore({
                 assets,
                 history,
+                investments,
                 exchangeRate,
                 aiAnalysis,
                 lastUpdated: new Date().toISOString()
@@ -128,36 +130,7 @@ const App: React.FC = () => {
     };
     const timeoutId = setTimeout(saveData, 2000); // 2 second throttle
     return () => clearTimeout(timeoutId);
-  }, [assets, history, exchangeRate, aiAnalysis, user, dataLoading]);
-
-  // --- Automatic Loan Repayment Check ---
-  useEffect(() => {
-    if (dataLoading || assets.length === 0) return;
-
-    const today = new Date();
-    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-    const currentDay = today.getDate();
-
-    let hasChanges = false;
-    const updatedAssets = assets.map(asset => {
-        if (asset.type === AssetType.LOAN_TWD && asset.repaymentDay && asset.monthlyRepayment) {
-            if (currentDay >= asset.repaymentDay && asset.lastRepaymentMonth !== currentMonthKey) {
-                const newPrice = Math.max(0, asset.currentPrice - asset.monthlyRepayment);
-                hasChanges = true;
-                return {
-                    ...asset,
-                    currentPrice: newPrice,
-                    lastRepaymentMonth: currentMonthKey
-                };
-            }
-        }
-        return asset;
-    });
-
-    if (hasChanges) {
-        setAssets(updatedAssets);
-    }
-  }, [dataLoading, assets.length]);
+  }, [assets, history, investments, exchangeRate, aiAnalysis, user, dataLoading]);
 
   // Fetch Exchange Rate on mount
   useEffect(() => {
@@ -175,35 +148,6 @@ const App: React.FC = () => {
     };
     fetchRate();
   }, []);
-
-  // --- Automatic History Snapshot Logic ---
-  useEffect(() => {
-      if (dataLoading) return;
-      const today = new Date();
-      const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-      const hasRecord = history.some(r => r.date === currentMonthKey);
-      
-      if (!hasRecord && assets.length > 0) {
-          let totalAssets = 0;
-          let totalLiabilities = 0;
-          assets.forEach(asset => {
-               const val = asset.type.includes('US') 
-                    ? (asset.type.includes('CASH') ? asset.currentPrice : (asset.shares * asset.currentPrice)) * exchangeRate 
-                    : (asset.type.includes('STOCK') ? (asset.shares * asset.currentPrice) : asset.currentPrice);
-               if (asset.type === AssetType.LOAN_TWD) totalLiabilities += val;
-               else totalAssets += val;
-          });
-          const newRecord: HistoryRecord = {
-              id: crypto.randomUUID(),
-              date: currentMonthKey,
-              totalAssets,
-              totalLiabilities,
-              netWorth: totalAssets - totalLiabilities,
-              note: '自動建立'
-          };
-          setHistory(prev => [...prev, newRecord]);
-      }
-  }, [history.length, dataLoading, assets, exchangeRate]);
 
   // --- Derived State (Filtering) ---
   const filteredAssets = useMemo(() => {
@@ -257,6 +201,15 @@ const App: React.FC = () => {
       }
   };
 
+  const handleAddInvestment = (record: Omit<InvestmentRecord, 'id'>) => {
+    const newRecord = { ...record, id: crypto.randomUUID() };
+    setInvestments(prev => [newRecord, ...prev]);
+  };
+
+  const handleDeleteInvestment = (id: string) => {
+    setInvestments(prev => prev.filter(r => r.id !== id));
+  };
+
   const handleUpdateRecord = (updatedRecord: HistoryRecord) => {
       setHistory(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
   };
@@ -308,6 +261,7 @@ const App: React.FC = () => {
   const handleImportData = async (data: any) => {
       if (data.assets) setAssets(data.assets);
       if (data.history) setHistory(data.history);
+      if (data.investments) setInvestments(data.investments);
       if (data.exchangeRate) setExchangeRate(data.exchangeRate);
       alert('資料已匯入！');
   };
@@ -317,6 +271,7 @@ const App: React.FC = () => {
           await signOut(auth);
           setAssets([]);
           setHistory([]);
+          setInvestments([]);
           setUser(null);
       } catch (e) {
           console.error("Logout failed", e);
@@ -353,10 +308,10 @@ const App: React.FC = () => {
                     <h1 className="text-xl font-bold tracking-tight text-white hidden sm:block">WealthFolio</h1>
                 </div>
                 <div className="flex bg-slate-800 p-1 rounded-lg overflow-x-auto no-scrollbar">
-                    {(['DASHBOARD', 'HISTORY', 'ALLOCATION', 'CALCULATOR'] as ViewMode[]).map(v => (
+                    {(['DASHBOARD', 'INVESTMENTS', 'HISTORY', 'ALLOCATION', 'CALCULATOR'] as ViewMode[]).map(v => (
                         <button key={v} onClick={() => setView(v)} className={`px-3 py-1.5 rounded-md flex items-center gap-2 text-sm font-medium transition whitespace-nowrap ${view === v ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
-                            {v === 'DASHBOARD' ? <LayoutDashboard size={14} /> : v === 'HISTORY' ? <History size={14} /> : v === 'ALLOCATION' ? <Target size={14} /> : <Calculator size={14} />}
-                            {v === 'DASHBOARD' ? '總覽' : v === 'HISTORY' ? '歷史' : v === 'ALLOCATION' ? '規劃' : '試算'}
+                            {v === 'DASHBOARD' ? <LayoutDashboard size={14} /> : v === 'INVESTMENTS' ? <PiggyBank size={14} /> : v === 'HISTORY' ? <History size={14} /> : v === 'ALLOCATION' ? <Target size={14} /> : <Calculator size={14} />}
+                            {v === 'DASHBOARD' ? '總覽' : v === 'INVESTMENTS' ? '投入' : v === 'HISTORY' ? '歷史' : v === 'ALLOCATION' ? '規劃' : '試算'}
                         </button>
                     ))}
                 </div>
@@ -397,6 +352,7 @@ const App: React.FC = () => {
                 </div>
             </>
         )}
+        {view === 'INVESTMENTS' && <InvestmentLogs investments={investments} assets={assets} onAdd={handleAddInvestment} onDelete={handleDeleteInvestment} exchangeRate={exchangeRate} />}
         {view === 'HISTORY' && <HistoryTracker history={history} onUpdateRecord={handleUpdateRecord} />}
         {view === 'ALLOCATION' && <AllocationTool assets={assets} exchangeRate={exchangeRate} />}
         {view === 'CALCULATOR' && <CompoundCalculator initialPrincipal={currentNetWorth > 0 ? currentNetWorth : 0} />}
