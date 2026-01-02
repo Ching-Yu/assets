@@ -2,14 +2,15 @@
 import React, { useState } from 'react';
 import { HistoryRecord } from '../types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
-import { Calendar, Edit2, Save, X } from 'lucide-react';
+import { Calendar, Edit2, Save, X, Camera } from 'lucide-react';
 
 interface HistoryTrackerProps {
   history: HistoryRecord[];
   onUpdateRecord: (record: HistoryRecord) => void;
+  onTakeSnapshot: () => void;
 }
 
-const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord }) => {
+const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord, onTakeSnapshot }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<HistoryRecord>>({});
 
@@ -42,10 +43,20 @@ const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord
       
       {/* Chart Section */}
       <div className="bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700/50">
-        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <Calendar className="text-indigo-400" />
-            資產淨值趨勢 (Net Worth Trend)
-        </h2>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Calendar className="text-indigo-400" />
+                資產淨值趨勢 (Net Worth Trend)
+            </h2>
+            <button 
+                onClick={onTakeSnapshot}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition shadow-lg shadow-indigo-600/20"
+                title="紀錄當前總資產到本月歷史"
+            >
+                <Camera size={16} />
+                手動快照
+            </button>
+        </div>
         
         <div className="h-[350px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -99,7 +110,7 @@ const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord
       <div className="bg-slate-800 rounded-2xl shadow-lg border border-slate-700/50 overflow-hidden">
         <div className="p-6 border-b border-slate-700">
              <h3 className="text-lg font-bold text-white">每月紀錄明細</h3>
-             <p className="text-sm text-slate-400">每月1號自動紀錄，您也可手動修正當月數據。</p>
+             <p className="text-sm text-slate-400">每月1號 (或您當月首次登入時) 自動紀錄，您也可手動快照或修正數據。</p>
         </div>
         
         <div className="overflow-x-auto">
@@ -119,7 +130,10 @@ const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord
                     ) : (
                         [...sortedHistory].reverse().map((record) => (
                             <tr key={record.id} className="hover:bg-slate-700/30">
-                                <td className="p-4 font-mono">{record.date}</td>
+                                <td className="p-4 font-mono">
+                                    {record.date}
+                                    {record.note && <div className="text-[10px] text-slate-500 mt-0.5">{record.note}</div>}
+                                </td>
                                 
                                 {editingId === record.id ? (
                                     <>

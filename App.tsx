@@ -171,6 +171,82 @@ const App: React.FC = () => {
       return totalAssets - totalLoans;
   }, [filteredAssets, exchangeRate]);
 
+  // --- Snapshot Logic ---
+  
+  // Calculate current portfolio stats (Helper)
+  const calculatePortfolioStats = () => {
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+    
+    // Note: We use 'assets' (all assets) instead of 'filteredAssets' to ensure history is accurate
+    // even if the user has some filters toggled off on the dashboard.
+    assets.forEach(asset => {
+      const val = (asset.type.includes('US') 
+        ? (asset.type.includes('CASH') ? asset.currentPrice : (asset.shares * asset.currentPrice)) * exchangeRate 
+        : (asset.type.includes('STOCK') ? (asset.shares * asset.currentPrice) : asset.currentPrice));
+      
+      if (asset.type === AssetType.LOAN_TWD) {
+        totalLiabilities += val;
+      } else {
+        totalAssets += val;
+      }
+    });
+
+    return {
+      totalAssets,
+      totalLiabilities,
+      netWorth: totalAssets - totalLiabilities
+    };
+  };
+
+  const handleTakeSnapshot = (isAuto = false) => {
+    if (assets.length === 0) return;
+
+    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const stats = calculatePortfolioStats();
+    
+    setHistory(prev => {
+        const exists = prev.find(h => h.date === currentMonth);
+        
+        // If it's an auto-snapshot and record already exists, do nothing
+        if (isAuto && exists) return prev;
+
+        const newRecord: HistoryRecord = {
+            id: exists ? exists.id : crypto.randomUUID(),
+            date: currentMonth,
+            totalAssets: stats.totalAssets,
+            totalLiabilities: stats.totalLiabilities,
+            netWorth: stats.netWorth,
+            note: exists ? exists.note : (isAuto ? '每月自動紀錄' : '手動快照')
+        };
+
+        if (exists) {
+             // Update existing
+             return prev.map(h => h.date === currentMonth ? newRecord : h);
+        } else {
+             // Add new
+             return [...prev, newRecord];
+        }
+    });
+
+    if (!isAuto) {
+        alert('已更新本月資產紀錄！');
+    }
+  };
+
+  // Check for missing monthly record on load (Auto-Snapshot)
+  useEffect(() => {
+    if (!dataLoading && user && assets.length > 0) {
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const hasRecord = history.some(h => h.date === currentMonth);
+        
+        if (!hasRecord) {
+            console.log("Auto-creating history record for", currentMonth);
+            handleTakeSnapshot(true);
+        }
+    }
+  }, [dataLoading, user]); // Run once when data is ready
+
   // --- Handlers ---
   const handleAddAsset = (type: AssetType) => {
     setEditingAsset(undefined);
@@ -353,7 +429,7 @@ const App: React.FC = () => {
             </>
         )}
         {view === 'INVESTMENTS' && <InvestmentLogs investments={investments} assets={assets} onAdd={handleAddInvestment} onDelete={handleDeleteInvestment} exchangeRate={exchangeRate} />}
-        {view === 'HISTORY' && <HistoryTracker history={history} onUpdateRecord={handleUpdateRecord} />}
+        {view === 'HISTORY' && <HistoryTracker history={history} onUpdateRecord={handleUpdateRecord} onTakeSnapshot={() => handleTakeSnapshot(false)} />}
         {view === 'ALLOCATION' && <AllocationTool assets={assets} exchangeRate={exchangeRate} />}
         {view === 'CALCULATOR' && <CompoundCalculator initialPrincipal={currentNetWorth > 0 ? currentNetWorth : 0} />}
       </main>
