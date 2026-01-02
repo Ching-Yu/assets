@@ -202,7 +202,9 @@ const App: React.FC = () => {
   const handleTakeSnapshot = (isAuto = false) => {
     if (assets.length === 0) return;
 
-    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const now = new Date();
+    const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+    const todayFull = now.toISOString().slice(0, 10);   // YYYY-MM-DD
     const stats = calculatePortfolioStats();
     
     setHistory(prev => {
@@ -217,12 +219,13 @@ const App: React.FC = () => {
             totalAssets: stats.totalAssets,
             totalLiabilities: stats.totalLiabilities,
             netWorth: stats.netWorth,
-            note: exists ? exists.note : (isAuto ? '每月自動紀錄' : '手動快照')
+            note: exists ? exists.note : (isAuto ? '每月自動紀錄' : '手動快照'),
+            createdAt: todayFull
         };
 
         if (exists) {
              // Update existing
-             return prev.map(h => h.date === currentMonth ? newRecord : h);
+             return prev.map(h => h.date === currentMonth ? { ...newRecord, createdAt: todayFull } : h);
         } else {
              // Add new
              return [...prev, newRecord];

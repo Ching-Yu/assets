@@ -54,11 +54,12 @@ export interface PortfolioSummary {
 
 export interface HistoryRecord {
   id: string;
-  date: string;
+  date: string; // YYYY-MM
   totalAssets: number;
   totalLiabilities: number;
   netWorth: number;
   note?: string;
+  createdAt?: string; // YYYY-MM-DD
 }
 
 export interface GeminiAnalysisResult {

@@ -130,8 +130,13 @@ const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord
                     ) : (
                         [...sortedHistory].reverse().map((record) => (
                             <tr key={record.id} className="hover:bg-slate-700/30">
-                                <td className="p-4 font-mono">
-                                    {record.date}
+                                <td className="p-4">
+                                    <div className="font-mono text-white font-bold">{record.date}</div>
+                                    {record.createdAt && (
+                                        <div className="text-xs text-slate-400 mt-0.5 font-mono">
+                                            {record.createdAt}
+                                        </div>
+                                    )}
                                     {record.note && <div className="text-[10px] text-slate-500 mt-0.5">{record.note}</div>}
                                 </td>
                                 
@@ -163,9 +168,9 @@ const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord
                                     </>
                                 ) : (
                                     <>
-                                        <td className="p-4 text-right">NT$ {record.totalAssets.toLocaleString()}</td>
-                                        <td className="p-4 text-right text-rose-300">NT$ {record.totalLiabilities.toLocaleString()}</td>
-                                        <td className="p-4 text-right font-bold text-indigo-300">NT$ {record.netWorth.toLocaleString()}</td>
+                                        <td className="p-4 text-right">NT$ {record.totalAssets.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                        <td className="p-4 text-right text-rose-300">NT$ {record.totalLiabilities.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                        <td className="p-4 text-right font-bold text-indigo-300">NT$ {record.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                                         <td className="p-4 text-right">
                                             <button 
                                                 onClick={() => startEdit(record)}
