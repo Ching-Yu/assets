@@ -60,6 +60,10 @@ export interface HistoryRecord {
   netWorth: number;
   note?: string;
   createdAt?: string; // YYYY-MM-DD
+  // New breakdown fields
+  twStocks?: number;
+  usStocks?: number;
+  cash?: number;
 }
 
 export interface GeminiAnalysisResult {

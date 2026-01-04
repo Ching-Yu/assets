@@ -177,13 +177,30 @@ const App: React.FC = () => {
   const calculatePortfolioStats = () => {
     let totalAssets = 0;
     let totalLiabilities = 0;
+    let twStocks = 0;
+    let usStocks = 0;
+    let cash = 0;
     
     // Note: We use 'assets' (all assets) instead of 'filteredAssets' to ensure history is accurate
     // even if the user has some filters toggled off on the dashboard.
     assets.forEach(asset => {
-      const val = (asset.type.includes('US') 
-        ? (asset.type.includes('CASH') ? asset.currentPrice : (asset.shares * asset.currentPrice)) * exchangeRate 
-        : (asset.type.includes('STOCK') ? (asset.shares * asset.currentPrice) : asset.currentPrice));
+      let val = 0;
+
+      if (asset.type.includes('US')) {
+         // US Assets
+         const baseVal = asset.type.includes('CASH') ? asset.currentPrice : (asset.shares * asset.currentPrice);
+         val = baseVal * exchangeRate;
+         
+         if (asset.type === AssetType.US_STOCK) usStocks += val;
+         if (asset.type === AssetType.CASH_USD) cash += val;
+
+      } else {
+         // TW Assets
+         val = asset.type.includes('STOCK') ? (asset.shares * asset.currentPrice) : asset.currentPrice;
+         
+         if (asset.type === AssetType.TW_STOCK) twStocks += val;
+         if (asset.type === AssetType.CASH_TWD) cash += val;
+      }
       
       if (asset.type === AssetType.LOAN_TWD) {
         totalLiabilities += val;
@@ -195,7 +212,10 @@ const App: React.FC = () => {
     return {
       totalAssets,
       totalLiabilities,
-      netWorth: totalAssets - totalLiabilities
+      netWorth: totalAssets - totalLiabilities,
+      twStocks,
+      usStocks,
+      cash
     };
   };
 
@@ -220,7 +240,10 @@ const App: React.FC = () => {
             totalLiabilities: stats.totalLiabilities,
             netWorth: stats.netWorth,
             note: exists ? exists.note : (isAuto ? '每月自動紀錄' : '手動快照'),
-            createdAt: todayFull
+            createdAt: todayFull,
+            twStocks: stats.twStocks,
+            usStocks: stats.usStocks,
+            cash: stats.cash
         };
 
         if (exists) {

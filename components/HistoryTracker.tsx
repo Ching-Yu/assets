@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
 import { HistoryRecord } from '../types';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
-import { Calendar, Edit2, Save, X, Camera } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Calendar, Edit2, Save, X, Camera, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface HistoryTrackerProps {
   history: HistoryRecord[];
@@ -16,6 +16,9 @@ const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord
 
   // Sort history by date ascending for chart
   const sortedHistory = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  
+  // For table, we usually want descending (newest first)
+  const reversedHistory = [...sortedHistory].reverse();
 
   const startEdit = (record: HistoryRecord) => {
     setEditingId(record.id);
@@ -36,6 +39,25 @@ const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord
       });
       setEditingId(null);
     }
+  };
+
+  // Helper to calculate percentage change
+  const calculateChange = (current: number | undefined, previous: number | undefined) => {
+    if (!current || !previous || previous === 0) return null;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const renderPercent = (current: number | undefined, previous: number | undefined) => {
+    const change = calculateChange(current, previous);
+    if (change === null) return <span className="text-slate-600"><Minus size={10} /></span>;
+    
+    const isPositive = change >= 0;
+    return (
+        <span className={`text-[10px] flex items-center justify-end gap-0.5 ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {isPositive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+            {Math.abs(change).toFixed(1)}%
+        </span>
+    );
   };
 
   return (
@@ -110,79 +132,136 @@ const HistoryTracker: React.FC<HistoryTrackerProps> = ({ history, onUpdateRecord
       <div className="bg-slate-800 rounded-2xl shadow-lg border border-slate-700/50 overflow-hidden">
         <div className="p-6 border-b border-slate-700">
              <h3 className="text-lg font-bold text-white">每月紀錄明細</h3>
-             <p className="text-sm text-slate-400">每月1號 (或您當月首次登入時) 自動紀錄，您也可手動快照或修正數據。</p>
+             <p className="text-sm text-slate-400">系統會自動計算當月與上月的變動百分比。</p>
         </div>
         
         <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left min-w-[800px]">
                 <thead>
                     <tr className="bg-slate-900/50 text-slate-400 text-xs uppercase">
                         <th className="p-4 font-medium">月份</th>
-                        <th className="p-4 font-medium text-right">總資產</th>
+                        <th className="p-4 font-medium text-right bg-emerald-900/10">台股</th>
+                        <th className="p-4 font-medium text-right bg-blue-900/10">美股 (NT)</th>
+                        <th className="p-4 font-medium text-right bg-amber-900/10">現金</th>
+                        <th className="p-4 font-medium text-right border-l border-slate-700">總資產</th>
                         <th className="p-4 font-medium text-right">總負債</th>
                         <th className="p-4 font-medium text-right">淨資產</th>
                         <th className="p-4 font-medium text-right w-24">操作</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700/50 text-sm text-white">
-                    {sortedHistory.length === 0 ? (
-                        <tr><td colSpan={5} className="p-8 text-center text-slate-500">尚無歷史資料</td></tr>
+                    {reversedHistory.length === 0 ? (
+                        <tr><td colSpan={8} className="p-8 text-center text-slate-500">尚無歷史資料</td></tr>
                     ) : (
-                        [...sortedHistory].reverse().map((record) => (
-                            <tr key={record.id} className="hover:bg-slate-700/30">
-                                <td className="p-4">
-                                    <div className="font-mono text-white font-bold">{record.date}</div>
-                                    {record.createdAt && (
-                                        <div className="text-xs text-slate-400 mt-0.5 font-mono">
-                                            {record.createdAt}
-                                        </div>
+                        reversedHistory.map((record, index) => {
+                            // Find previous month record (which is next in the reversed array)
+                            const prevRecord = reversedHistory[index + 1];
+
+                            return (
+                                <tr key={record.id} className="hover:bg-slate-700/30">
+                                    {/* Date Column */}
+                                    <td className="p-4">
+                                        <div className="font-mono text-white font-bold">{record.date}</div>
+                                        {record.createdAt && (
+                                            <div className="text-xs text-slate-400 mt-0.5 font-mono">
+                                                {record.createdAt}
+                                            </div>
+                                        )}
+                                        {record.note && <div className="text-[10px] text-slate-500 mt-0.5">{record.note}</div>}
+                                    </td>
+                                    
+                                    {/* Editing Mode */}
+                                    {editingId === record.id ? (
+                                        <>
+                                            <td className="p-4 text-right bg-slate-800/50 text-slate-500 text-xs italic">
+                                                (編輯總額時暫不顯示明細)
+                                            </td>
+                                            <td className="p-4 text-right bg-slate-800/50"></td>
+                                            <td className="p-4 text-right bg-slate-800/50"></td>
+                                            <td className="p-4 text-right border-l border-slate-700">
+                                                <input 
+                                                    type="number" 
+                                                    className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right w-24 text-white"
+                                                    value={editForm.totalAssets}
+                                                    onChange={(e) => setEditForm({...editForm, totalAssets: Number(e.target.value)})}
+                                                />
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <input 
+                                                    type="number" 
+                                                    className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right w-24 text-white"
+                                                    value={editForm.totalLiabilities}
+                                                    onChange={(e) => setEditForm({...editForm, totalLiabilities: Number(e.target.value)})}
+                                                />
+                                            </td>
+                                            <td className="p-4 text-right text-slate-500">
+                                                (自動計算)
+                                            </td>
+                                            <td className="p-4 text-right flex justify-end gap-2">
+                                                <button onClick={saveEdit} className="text-emerald-400 hover:bg-slate-600 p-1.5 rounded"><Save size={16}/></button>
+                                                <button onClick={cancelEdit} className="text-rose-400 hover:bg-slate-600 p-1.5 rounded"><X size={16}/></button>
+                                            </td>
+                                        </>
+                                    ) : (
+                                        <>
+                                            {/* TW Stocks */}
+                                            <td className="p-4 text-right bg-emerald-900/5">
+                                                {record.twStocks !== undefined ? (
+                                                    <div className="flex flex-col items-end">
+                                                        <span>{record.twStocks.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                        {renderPercent(record.twStocks, prevRecord?.twStocks)}
+                                                    </div>
+                                                ) : <span className="text-slate-600">-</span>}
+                                            </td>
+
+                                            {/* US Stocks */}
+                                            <td className="p-4 text-right bg-blue-900/5">
+                                                 {record.usStocks !== undefined ? (
+                                                    <div className="flex flex-col items-end">
+                                                        <span>{record.usStocks.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                        {renderPercent(record.usStocks, prevRecord?.usStocks)}
+                                                    </div>
+                                                ) : <span className="text-slate-600">-</span>}
+                                            </td>
+
+                                            {/* Cash */}
+                                            <td className="p-4 text-right bg-amber-900/5">
+                                                 {record.cash !== undefined ? (
+                                                    <div className="flex flex-col items-end">
+                                                        <span>{record.cash.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                    </div>
+                                                ) : <span className="text-slate-600">-</span>}
+                                            </td>
+
+                                            {/* Total Assets */}
+                                            <td className="p-4 text-right font-medium border-l border-slate-700">
+                                                NT$ {record.totalAssets.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </td>
+
+                                            {/* Liabilities */}
+                                            <td className="p-4 text-right text-rose-300">
+                                                NT$ {record.totalLiabilities.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </td>
+
+                                            {/* Net Worth */}
+                                            <td className="p-4 text-right font-bold text-indigo-300">
+                                                NT$ {record.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </td>
+
+                                            {/* Actions */}
+                                            <td className="p-4 text-right">
+                                                <button 
+                                                    onClick={() => startEdit(record)}
+                                                    className="text-slate-400 hover:text-white p-1.5 hover:bg-slate-600 rounded transition"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
+                                            </td>
+                                        </>
                                     )}
-                                    {record.note && <div className="text-[10px] text-slate-500 mt-0.5">{record.note}</div>}
-                                </td>
-                                
-                                {editingId === record.id ? (
-                                    <>
-                                        <td className="p-4 text-right">
-                                            <input 
-                                                type="number" 
-                                                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right w-32 text-white"
-                                                value={editForm.totalAssets}
-                                                onChange={(e) => setEditForm({...editForm, totalAssets: Number(e.target.value)})}
-                                            />
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <input 
-                                                type="number" 
-                                                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-right w-32 text-white"
-                                                value={editForm.totalLiabilities}
-                                                onChange={(e) => setEditForm({...editForm, totalLiabilities: Number(e.target.value)})}
-                                            />
-                                        </td>
-                                        <td className="p-4 text-right text-slate-500">
-                                            (自動計算)
-                                        </td>
-                                        <td className="p-4 text-right flex justify-end gap-2">
-                                            <button onClick={saveEdit} className="text-emerald-400 hover:bg-slate-600 p-1.5 rounded"><Save size={16}/></button>
-                                            <button onClick={cancelEdit} className="text-rose-400 hover:bg-slate-600 p-1.5 rounded"><X size={16}/></button>
-                                        </td>
-                                    </>
-                                ) : (
-                                    <>
-                                        <td className="p-4 text-right">NT$ {record.totalAssets.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                        <td className="p-4 text-right text-rose-300">NT$ {record.totalLiabilities.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                        <td className="p-4 text-right font-bold text-indigo-300">NT$ {record.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                        <td className="p-4 text-right">
-                                            <button 
-                                                onClick={() => startEdit(record)}
-                                                className="text-slate-400 hover:text-white p-1.5 hover:bg-slate-600 rounded transition"
-                                            >
-                                                <Edit2 size={16} />
-                                            </button>
-                                        </td>
-                                    </>
-                                )}
-                            </tr>
-                        ))
+                                </tr>
+                            );
+                        })
                     )}
                 </tbody>
             </table>
