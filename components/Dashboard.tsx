@@ -41,7 +41,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
     const totalAssets = twStockVal + usStockVal + cashVal;
     const netWorth = totalAssets - loanVal;
 
-    // 2. Aggregated Individual Asset Allocation (Merged by name/type)
+    // 2. Aggregated Individual Asset Allocation (Merged by name/type/aliases)
     const assetAggregator = new Map<string, number>();
     assets
         .filter(a => a.type !== AssetType.LOAN_TWD)
@@ -57,10 +57,22 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
                 val *= exchangeRate;
             }
 
-            // Grouping Logic:
-            // - If it's cash, group into "現金 (Cash)"
-            // - If it's a stock, group by name (to merge multiple entries of 2330, etc.)
-            const key = asset.type.includes('CASH') ? '現金 (Cash)' : asset.name;
+            // Normalization Logic:
+            let key = asset.name;
+            const upperName = asset.name.toUpperCase();
+
+            if (asset.type.includes('CASH')) {
+                key = '現金 (Cash)';
+            } else if (asset.type === AssetType.US_STOCK) {
+                // Group related Nasdaq 100 ETFs
+                if (upperName.includes('QQQ') || upperName.includes('QQQM')) {
+                    key = 'QQQ / QQQM';
+                } 
+                // Group related S&P 500 ETFs
+                else if (upperName.includes('VOO') || upperName.includes('IVV') || upperName.includes('SPY')) {
+                    key = 'S&P 500 (VOO/IVV/SPY)';
+                }
+            }
             
             assetAggregator.set(key, (assetAggregator.get(key) || 0) + val);
         });
@@ -217,7 +229,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
                 {summary.assetAllocation.map((entry, index) => (
                     <div key={index} className="flex items-center gap-1.5 bg-slate-700/30 px-2 py-1 rounded-full">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}></div>
-                        <span className="truncate max-w-[80px]">{entry.name}</span>
+                        <span className="truncate max-w-[80px] text-[9px]">{entry.name}</span>
                         <span className="opacity-70">{summary.totalAssetsTwd > 0 ? Math.round((entry.value / summary.totalAssetsTwd) * 100) : 0}%</span>
                     </div>
                     ))}
