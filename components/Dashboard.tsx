@@ -22,7 +22,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
     let cashVal = 0;
     let loanVal = 0;
     
-    // Calculate total values by category
+    // 1. Basic sums for hero cards
     assets.forEach(asset => {
       const val = (asset.type.includes('US') ? (asset.shares * asset.currentPrice) * exchangeRate : (asset.shares * asset.currentPrice));
       
@@ -31,7 +31,6 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
       } else if (asset.type === AssetType.US_STOCK) {
         usStockVal += val;
       } else if (asset.type === AssetType.CASH_TWD || asset.type === AssetType.CASH_USD) {
-        // Correctly handle cash values (shares usually 1, but safeguard calculation)
         const cashAmt = asset.type === AssetType.CASH_USD ? asset.currentPrice * exchangeRate : asset.currentPrice;
         cashVal += cashAmt;
       } else if (asset.type === AssetType.LOAN_TWD) {
@@ -42,12 +41,13 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
     const totalAssets = twStockVal + usStockVal + cashVal;
     const netWorth = totalAssets - loanVal;
 
-    // Prepare data for individual asset allocation pie chart (Assets Only)
-    const assetData = assets
+    // 2. Aggregated Individual Asset Allocation (Merged by name/type)
+    const assetAggregator = new Map<string, number>();
+    assets
         .filter(a => a.type !== AssetType.LOAN_TWD)
-        .map(asset => {
+        .forEach(asset => {
             let val = 0;
-            if (asset.type.includes('CASH') || asset.type.includes('LOAN')) {
+            if (asset.type.includes('CASH')) {
                  val = asset.currentPrice;
             } else {
                  val = asset.shares * asset.currentPrice;
@@ -56,14 +56,20 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
             if (asset.type.includes('US')) {
                 val *= exchangeRate;
             }
-            return {
-                name: asset.name,
-                value: val,
-            };
-        })
+
+            // Grouping Logic:
+            // - If it's cash, group into "現金 (Cash)"
+            // - If it's a stock, group by name (to merge multiple entries of 2330, etc.)
+            const key = asset.type.includes('CASH') ? '現金 (Cash)' : asset.name;
+            
+            assetAggregator.set(key, (assetAggregator.get(key) || 0) + val);
+        });
+
+    const assetData = Array.from(assetAggregator.entries())
+        .map(([name, value]) => ({ name, value }))
         .sort((a, b) => b.value - a.value);
 
-    // Prepare data for Sector Allocation (Stocks Only)
+    // 3. Sector Allocation (Stocks Only)
     const sectorMap = new Map<AssetSector, number>();
     assets
       .filter(a => a.type === AssetType.TW_STOCK || a.type === AssetType.US_STOCK)
@@ -71,7 +77,6 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
           let val = asset.shares * asset.currentPrice;
           if (asset.type.includes('US')) val *= exchangeRate;
           
-          // Use existing sector, or auto-detect if missing/OTHER
           let sector = asset.sector;
           if (!sector || sector === AssetSector.OTHER) {
               sector = detectSector(asset.name);
@@ -164,7 +169,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
         </div>
       </div>
 
-      {/* Asset Allocation Chart */}
+      {/* Asset Allocation Chart (Grouped) */}
       <div className="bg-slate-800 p-6 rounded-2xl shadow-lg flex flex-col items-center justify-center relative">
         <h3 className="text-slate-300 font-semibold mb-4 w-full text-left flex items-center gap-2">
             <Landmark size={18} />
@@ -220,7 +225,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
         )}
       </div>
 
-      {/* Sector Allocation Chart (New) */}
+      {/* Sector Allocation Chart */}
       <div className="bg-slate-800 p-6 rounded-2xl shadow-lg flex flex-col items-center justify-center relative lg:col-span-3">
         <h3 className="text-slate-300 font-semibold mb-4 w-full text-left flex items-center gap-2">
             <PieIcon size={18} />
