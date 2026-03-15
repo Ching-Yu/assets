@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { Asset, AssetType } from "../types";
 
@@ -12,19 +11,13 @@ const SYSTEM_INSTRUCTION = `
 1. 資產配置平衡 (股票 vs 現金)。
 2. 產業集中度 (根據代碼如 2330, AAPL, NVDA 猜測產業)。
 3. 潛在風險 (例如：過度集中在科技股)。
-4. 針對目前的市場趨勢提供一段簡短的建議。
-5. 簡短的鼓勵性總結。
-請保持在 400 字以內。適當使用表情符號。
+4. 簡短的鼓勵性總結。
+請保持在 300 字以內。適當使用表情符號。
 `;
 
 export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: number): Promise<string> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    return "⚠️ 尚未設定 API Key。\n\n如需使用 AI 分析功能，請確認環境變數中已包含 `API_KEY`。";
-  }
-
   try {
-    const ai = new GoogleGenAI({ apiKey: apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     
     // Prepare data for the model
     const portfolioDesc = assets.map(a => {
@@ -51,7 +44,7 @@ export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: 
     
     ${portfolioDesc}
     
-    請分析我的投資組合結構並提供專業建議。
+    請分析我的投資組合結構。
     `;
 
     const response = await ai.models.generateContent({
@@ -70,105 +63,65 @@ export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: 
   }
 };
 
-/**
- * Fetch Stock Price using multiple proxy strategies
- */
 export const fetchStockPrice = async (ticker: string, type: AssetType): Promise<number | null> => {
-  let symbol = ticker.trim();
-
-  // 1. Symbol Parsing Logic
-  if (type === AssetType.TW_STOCK) {
-    // Handle Taiwan stocks (e.g., "2330 台積電" -> "2330.TW")
-    const match = symbol.match(/(\d{4,})/);
-    if (match) {
-        symbol = `${match[1]}.TW`;
-    } else if (/^\d+$/.test(symbol)) {
-        symbol = `${symbol}.TW`;
-    }
-  } else {
-    // Handle US Tickers (e.g., "NVDA Corp" -> "NVDA")
-    symbol = symbol.split(/[\s,]+/)[0].toUpperCase();
-  }
-
-  // Use query2 and add timestamp to prevent caching
-  const targetUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d&ts=${Date.now()}`;
-
-  // 2. Define Proxy Strategies
-  // Public proxies are rate-limited, so we rotate through multiple providers.
-  const strategies = [
-    {
-        name: 'allorigins-raw',
-        // Direct raw access often works better and faster than the JSON wrapper
-        url: (target: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
-        extract: async (res: Response) => res.json()
-    },
-    {
-        name: 'corsproxy',
-        url: (target: string) => `https://corsproxy.io/?${encodeURIComponent(target)}`,
-        extract: async (res: Response) => res.json()
-    },
-    {
-        name: 'thingproxy',
-        url: (target: string) => `https://thingproxy.freeboard.io/fetch/${target}`,
-        extract: async (res: Response) => res.json()
-    },
-    {
-        // Fallback to the JSON wrapper version of allorigins if raw fails
-        name: 'allorigins-json',
-        url: (target: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`,
-        extract: async (res: Response) => {
-            const json = await res.json();
-            if (!json.contents) throw new Error('No contents');
-            return JSON.parse(json.contents);
-        }
-    }
-  ];
-
-  // 3. Execute Strategies Sequentially
-  for (const strategy of strategies) {
-      try {
-          // Timeout limit for each request to avoid hanging
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout per proxy
-
-          const response = await fetch(strategy.url(targetUrl), { 
-              signal: controller.signal,
-              headers: { 'Accept': 'application/json' }
-          });
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-              // console.warn(`[StockFetch] ${strategy.name} failed with status ${response.status}`);
-              continue;
-          }
-
-          const data = await strategy.extract(response);
-          const price = extractPrice(data, symbol);
-
-          if (price !== null) {
-              return price;
-          }
-      } catch (e) {
-          // Silent fail for individual strategy, try next
-          // console.warn(`[StockFetch] ${strategy.name} failed for ${symbol}:`, e);
-      }
-  }
-
-  console.error(`[StockFetch] All strategies failed for ${symbol}`);
-  return null;
-};
-
-/**
- * Helper to extract price from Yahoo Finance response data
- */
-function extractPrice(data: any, symbol: string): number | null {
   try {
-      const result = data?.chart?.result?.[0];
-      if (!result || !result.meta) return null;
-      
-      const price = result.meta.regularMarketPrice || result.meta.previousClose;
-      return typeof price === 'number' ? price : null;
-  } catch (e) {
-      return null;
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    
+    let searchQuery = '';
+    
+    // Optimize query for Google Search to trigger Finance widget
+    if (type === AssetType.TW_STOCK) {
+        const cleanTicker = ticker.replace(/[^0-9a-zA-Z]/g, '');
+        if (/^\d{4}$/.test(cleanTicker)) {
+            searchQuery = `Current stock price of ${cleanTicker}.TW on Google Finance`;
+        } else {
+            searchQuery = `Current stock price of ${ticker} in Taiwan stock market`;
+        }
+    } else {
+        // US Stocks
+        searchQuery = `Current stock price of ${ticker} on Google Finance`;
+    }
+
+    // Using gemini-3-flash-preview as recommended for search grounding
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: searchQuery,
+      config: {
+        tools: [{ googleSearch: {} }],
+        systemInstruction: `
+          You are a financial data assistant.
+          Task: Find the LATEST market price for the stock provided.
+          
+          INSTRUCTIONS:
+          1. Use Google Search to find the price.
+          2. Return ONLY the numeric value (e.g., 1450.5).
+          3. No currency symbols, no commas, no extra text.
+          4. If not found, return "0".
+        `,
+      }
+    });
+
+    const text = response.text?.trim();
+    console.log(`[Stock Fetch] ${ticker} response:`, text);
+    
+    if (text) {
+      // Remove commas from thousands separators (e.g., 1,450.00 -> 1450.00)
+      const normalizedText = text.replace(/,/g, '');
+      // Extract the first number found in the text
+      const match = normalizedText.match(/\d+(\.\d+)?/);
+      if (match) {
+        const price = parseFloat(match[0]);
+        if (price > 0) {
+          console.log(`[Stock Fetch] ${ticker} successfully parsed: ${price}`);
+          return price;
+        }
+      }
+    }
+    
+    console.warn(`[Stock Fetch] ${ticker} failed to parse price from: "${text}"`);
+    return null;
+  } catch (error) {
+    console.error(`[Stock Fetch] ${ticker} error:`, error);
+    return null;
   }
-}
+};

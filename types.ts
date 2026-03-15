@@ -4,39 +4,16 @@ export enum AssetType {
   US_STOCK = 'US_STOCK',
   CASH_TWD = 'CASH_TWD',
   CASH_USD = 'CASH_USD',
-  LOAN_TWD = 'LOAN_TWD'
-}
-
-export enum AssetSector {
-  ETF = 'ETF',
-  SEMICONDUCTOR = 'SEMICONDUCTOR', // 半導體
-  TECH = 'TECH', // 科技 (軟體/硬體)
-  FINANCE = 'FINANCE', // 金融
-  TRADITIONAL = 'TRADITIONAL', // 傳產
-  CRYPTO = 'CRYPTO', // 加密貨幣相關
-  OTHER = 'OTHER' // 其他
+  LOAN_TWD = 'LOAN_TWD' // New: Credit Loan / Liabilities
 }
 
 export interface Asset {
   id: string;
   type: AssetType;
-  name: string;
-  shares: number;
-  costBasis: number; 
-  currentPrice: number; 
-  note?: string;
-  sector?: AssetSector;
-  repaymentDay?: number; 
-  monthlyRepayment?: number;
-  lastRepaymentMonth?: string; 
-}
-
-export interface InvestmentRecord {
-  id: string;
-  date: string; // YYYY-MM
-  assetName: string;
-  amount: number;
-  currency: 'TWD' | 'USD';
+  name: string; // Ticker or Name (e.g., AAPL, 2330, 信貸)
+  shares: number; // For stocks. For loans, this can be 1.
+  costBasis: number; // Avg cost. For loans, this can be the interest rate (optional usage)
+  currentPrice: number; // Market price. For loans, this is the outstanding balance.
   note?: string;
 }
 
@@ -44,7 +21,7 @@ export interface PortfolioSummary {
   totalAssetsTwd: number;
   totalLiabilitiesTwd: number;
   netWorthTwd: number;
-  totalValueUsd: number;
+  totalValueUsd: number; // Net worth in USD
   allocation: {
     name: string;
     value: number;
@@ -54,16 +31,11 @@ export interface PortfolioSummary {
 
 export interface HistoryRecord {
   id: string;
-  date: string; // YYYY-MM
+  date: string; // YYYY-MM (e.g., "2023-10")
   totalAssets: number;
   totalLiabilities: number;
   netWorth: number;
   note?: string;
-  createdAt?: string; // YYYY-MM-DD
-  // New breakdown fields
-  twStocks?: number;
-  usStocks?: number;
-  cash?: number;
 }
 
 export interface GeminiAnalysisResult {
