@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { Asset, AssetType, HistoryRecord } from './types';
+import { Asset, AssetType, HistoryRecord, InvestmentRecord } from './types';
 import { DEFAULT_USD_TWD_RATE, MOCK_INITIAL_DATA } from './constants';
 import Dashboard from './components/Dashboard';
 import AssetList from './components/AssetList';
@@ -8,10 +7,14 @@ import AssetModal from './components/AssetModal';
 import GeminiAdvisor from './components/GeminiAdvisor';
 import CompoundCalculator from './components/CompoundCalculator';
 import HistoryTracker from './components/HistoryTracker';
+import InvestmentTracker from './components/InvestmentTracker';
 import { analyzePortfolioWithGemini, fetchStockPrice } from './services/geminiService';
-import { Settings, WalletMinimal, RefreshCcw, TrendingUp, Calculator, LayoutDashboard, Eye, EyeOff, History, Landmark } from 'lucide-react';
+import { Settings, WalletMinimal, RefreshCcw, TrendingUp, Calculator, LayoutDashboard, Eye, EyeOff, History, Landmark, PiggyBank, LogOut } from 'lucide-react';
+import { db, auth } from './firebase';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 
-type ViewMode = 'DASHBOARD' | 'HISTORY' | 'CALCULATOR';
+type ViewMode = 'DASHBOARD' | 'HISTORY' | 'CALCULATOR' | 'INVESTMENT';
 
 const App: React.FC = () => {
   // --- State ---
@@ -20,10 +23,8 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : (MOCK_INITIAL_DATA as Asset[]);
   });
   
-  const [history, setHistory] = useState<HistoryRecord[]>(() => {
-      const saved = localStorage.getItem('wealthfolio_history');
-      return saved ? JSON.parse(saved) : [];
-  });
+  const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const [investments, setInvestments] = useState<InvestmentRecord[]>([]);
   
   const [exchangeRate, setExchangeRate] = useState<number>(() => {
     const saved = localStorage.getItem('wealthfolio_rate');
@@ -38,28 +39,72 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
-  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   // View & Filter State
   const [view, setView] = useState<ViewMode>('DASHBOARD');
   const [showTwStocks, setShowTwStocks] = useState(true);
   const [showUsStocks, setShowUsStocks] = useState(true);
 
+  // Auth State
+  const [user, setUser] = useState(auth.currentUser);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+
   // --- Effects ---
   useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthReady || !user) {
+      setAssets([]);
+      setHistory([]);
+      setInvestments([]);
+      return;
     }
-  }, [toast]);
 
-  useEffect(() => {
-    localStorage.setItem('wealthfolio_assets', JSON.stringify(assets));
-  }, [assets]);
+    const assetsQuery = query(collection(db, `users/${user.uid}/assets`));
+    const unsubscribeAssets = onSnapshot(assetsQuery, (snapshot) => {
+      const loadedAssets: Asset[] = [];
+      snapshot.forEach((doc) => {
+        loadedAssets.push({ id: doc.id, ...doc.data() } as Asset);
+      });
+      setAssets(loadedAssets);
+    }, (error) => {
+      console.error("Error fetching assets:", error);
+    });
 
-  useEffect(() => {
-      localStorage.setItem('wealthfolio_history', JSON.stringify(history));
-  }, [history]);
+    const historyQuery = query(collection(db, `users/${user.uid}/history`));
+    const unsubscribeHistory = onSnapshot(historyQuery, (snapshot) => {
+      const loadedHistory: HistoryRecord[] = [];
+      snapshot.forEach((doc) => {
+        loadedHistory.push({ id: doc.id, ...doc.data() } as HistoryRecord);
+      });
+      setHistory(loadedHistory);
+    }, (error) => {
+      console.error("Error fetching history:", error);
+    });
+
+    const investmentsQuery = query(collection(db, `users/${user.uid}/investments`));
+    const unsubscribeInvestments = onSnapshot(investmentsQuery, (snapshot) => {
+      const loadedInvestments: InvestmentRecord[] = [];
+      snapshot.forEach((doc) => {
+        loadedInvestments.push({ id: doc.id, ...doc.data() } as InvestmentRecord);
+      });
+      setInvestments(loadedInvestments);
+    }, (error) => {
+      console.error("Error fetching investments:", error);
+    });
+
+    return () => {
+      unsubscribeAssets();
+      unsubscribeHistory();
+      unsubscribeInvestments();
+    };
+  }, [user, isAuthReady]);
 
   useEffect(() => {
     localStorage.setItem('wealthfolio_rate', exchangeRate.toString());
@@ -87,6 +132,8 @@ const App: React.FC = () => {
   // --- Automatic History Snapshot Logic ---
   // Check once on mount if current month record exists
   useEffect(() => {
+      if (!user || !isAuthReady) return;
+
       const today = new Date();
       const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
       
@@ -122,10 +169,13 @@ const App: React.FC = () => {
               note: '自動建立 (Auto-snapshot)'
           };
 
-          setHistory(prev => [...prev, newRecord]);
+          setDoc(doc(db, `users/${user.uid}/history`, newRecord.id), {
+            ...newRecord,
+            uid: user.uid
+          }).catch(console.error);
           console.log(`Auto-created history record for ${currentMonthKey}`);
       }
-  }, [history.length]); // Dependency on length ensures we don't loop, but runs if history loads empty
+  }, [history, assets, user, isAuthReady, exchangeRate]);
 
   // --- Derived State (Filtering) ---
   const filteredAssets = useMemo(() => {
@@ -155,6 +205,23 @@ const App: React.FC = () => {
   }, [filteredAssets, exchangeRate]);
 
   // --- Handlers ---
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Login failed", error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
+  };
+
   const handleAddAsset = (type: AssetType) => {
     setEditingAsset(undefined);
     setModalType(type);
@@ -167,23 +234,75 @@ const App: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSaveAsset = (assetData: Asset | Omit<Asset, 'id'>) => {
-    if ('id' in assetData) {
-      setAssets(prev => prev.map(a => a.id === assetData.id ? assetData : a));
-    } else {
-      const newAsset: Asset = { ...assetData, id: crypto.randomUUID() };
-      setAssets(prev => [...prev, newAsset]);
+  const handleSaveAsset = async (assetData: Asset | Omit<Asset, 'id'>) => {
+    if (!user) return;
+    const isEdit = 'id' in assetData;
+    const id = isEdit ? assetData.id : crypto.randomUUID();
+    const assetToSave = { ...assetData, id, uid: user.uid };
+    
+    try {
+      await setDoc(doc(db, `users/${user.uid}/assets`, id), assetToSave);
+    } catch (error) {
+      console.error("Error saving asset:", error);
     }
   };
 
-  const handleDeleteAsset = (id: string) => {
+  const handleDeleteAsset = async (id: string) => {
+    if (!user) return;
     if (window.confirm('確定要刪除此項目嗎？')) {
-      setAssets(prev => prev.filter(a => a.id !== id));
+      try {
+        await deleteDoc(doc(db, `users/${user.uid}/assets`, id));
+      } catch (error) {
+        console.error("Error deleting asset:", error);
+      }
     }
   };
 
-  const handleUpdateRecord = (updatedRecord: HistoryRecord) => {
-      setHistory(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+  const handleUpdateRecord = async (updatedRecord: HistoryRecord) => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, `users/${user.uid}/history`, updatedRecord.id), {
+        ...updatedRecord,
+        uid: user.uid
+      });
+    } catch (error) {
+      console.error("Error updating history record:", error);
+    }
+  };
+
+  const handleAddInvestment = async (record: Omit<InvestmentRecord, 'id'>) => {
+    if (!user) return;
+    const id = crypto.randomUUID();
+    try {
+      await setDoc(doc(db, `users/${user.uid}/investments`, id), {
+        ...record,
+        id,
+        uid: user.uid
+      });
+    } catch (error) {
+      console.error("Error adding investment:", error);
+    }
+  };
+
+  const handleUpdateInvestment = async (record: InvestmentRecord) => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, `users/${user.uid}/investments`, record.id), {
+        ...record,
+        uid: user.uid
+      });
+    } catch (error) {
+      console.error("Error updating investment:", error);
+    }
+  };
+
+  const handleDeleteInvestment = async (id: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, `users/${user.uid}/investments`, id));
+    } catch (error) {
+      console.error("Error deleting investment:", error);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -215,34 +334,54 @@ const App: React.FC = () => {
   };
 
   const handleUpdateAllPrices = async () => {
+      if (!user) return;
       setIsUpdatingPrices(true);
-      let updatedCount = 0;
-      let failedCount = 0;
       try {
           const updatedAssets = await Promise.all(assets.map(async (asset) => {
               if (asset.type === AssetType.TW_STOCK || asset.type === AssetType.US_STOCK) {
                   const newPrice = await fetchStockPrice(asset.name, asset.type);
-                  if (newPrice !== null && newPrice > 0) {
-                      updatedCount++;
-                      return { ...asset, currentPrice: newPrice };
-                  } else {
-                      failedCount++;
+                  if (newPrice !== null && newPrice > 0 && newPrice !== asset.currentPrice) {
+                      const updatedAsset = { ...asset, currentPrice: newPrice };
+                      await setDoc(doc(db, `users/${user.uid}/assets`, asset.id), {
+                        ...updatedAsset,
+                        uid: user.uid
+                      });
+                      return updatedAsset;
                   }
               }
               return asset;
           }));
-          setAssets(updatedAssets);
-          setToast({ 
-            message: `更新完成！成功: ${updatedCount}, 失敗: ${failedCount}`, 
-            type: failedCount === 0 ? 'success' : 'error' 
-          });
+          // setAssets(updatedAssets); // Handled by onSnapshot
       } catch (error) {
           console.error("Failed to update all prices", error);
-          setToast({ message: '更新過程中發生錯誤', type: 'error' });
       } finally {
           setIsUpdatingPrices(false);
       }
   };
+
+  if (!isAuthReady) {
+    return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">載入中...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+        <div className="bg-slate-800 p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-slate-700">
+          <div className="bg-indigo-600/20 p-4 rounded-full inline-block mb-6">
+            <WalletMinimal className="text-indigo-400" size={48} />
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">WealthFolio</h1>
+          <p className="text-slate-400 mb-8">智慧管理您的資產與投資組合</p>
+          <button
+            onClick={handleLogin}
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-6 rounded-xl transition shadow-lg shadow-indigo-600/20"
+          >
+            使用 Google 帳號登入
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen pb-20">
@@ -266,6 +405,13 @@ const App: React.FC = () => {
                     >
                         <LayoutDashboard size={14} />
                         總覽
+                    </button>
+                    <button 
+                        onClick={() => setView('INVESTMENT')}
+                        className={`px-3 py-1.5 rounded-md flex items-center gap-2 text-sm font-medium transition whitespace-nowrap ${view === 'INVESTMENT' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                    >
+                        <PiggyBank size={14} />
+                        投入
                     </button>
                     <button 
                         onClick={() => setView('HISTORY')}
@@ -338,6 +484,13 @@ const App: React.FC = () => {
                       </button>
                    </div>
                 </div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 text-slate-400 hover:text-rose-400 transition ml-2"
+                  title="登出"
+                >
+                  <LogOut size={18} />
+                </button>
             </div>
           </div>
         </div>
@@ -357,7 +510,7 @@ const App: React.FC = () => {
                 />
 
                 {/* Dashboard Section */}
-                <Dashboard assets={filteredAssets} exchangeRate={exchangeRate} />
+                <Dashboard assets={filteredAssets} investments={investments} exchangeRate={exchangeRate} />
 
                 {/* Asset Lists */}
                 <div className="grid grid-cols-1 gap-8">
@@ -394,6 +547,15 @@ const App: React.FC = () => {
             </>
         )}
 
+        {view === 'INVESTMENT' && (
+             <InvestmentTracker 
+                investments={investments} 
+                onAddRecord={handleAddInvestment}
+                onUpdateRecord={handleUpdateInvestment}
+                onDeleteRecord={handleDeleteInvestment}
+             />
+        )}
+
         {view === 'HISTORY' && (
              <HistoryTracker history={history} onUpdateRecord={handleUpdateRecord} />
         )}
@@ -403,16 +565,6 @@ const App: React.FC = () => {
         )}
 
       </main>
-
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-2 animate-bounce ${
-          toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
-        }`}>
-          <TrendingUp size={18} />
-          <span className="font-medium">{toast.message}</span>
-        </div>
-      )}
 
       {/* Modals */}
       <AssetModal 

@@ -17,7 +17,7 @@ const SYSTEM_INSTRUCTION = `
 
 export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: number): Promise<string> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     // Prepare data for the model
     const portfolioDesc = assets.map(a => {
@@ -48,7 +48,7 @@ export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: 
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -65,63 +65,65 @@ export const analyzePortfolioWithGemini = async (assets: Asset[], exchangeRate: 
 
 export const fetchStockPrice = async (ticker: string, type: AssetType): Promise<number | null> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     let searchQuery = '';
     
     // Optimize query for Google Search to trigger Finance widget
     if (type === AssetType.TW_STOCK) {
+        // If it looks like a pure number (e.g., 2330), append .TW to ensure TWSE context
         const cleanTicker = ticker.replace(/[^0-9a-zA-Z]/g, '');
         if (/^\d{4}$/.test(cleanTicker)) {
-            searchQuery = `Current stock price of ${cleanTicker}.TW on Google Finance`;
+            searchQuery = `${cleanTicker}.TW stock price google finance`;
         } else {
-            searchQuery = `Current stock price of ${ticker} in Taiwan stock market`;
+            searchQuery = `${ticker} Taiwan stock price google finance`;
         }
     } else {
         // US Stocks
-        searchQuery = `Current stock price of ${ticker} on Google Finance`;
+        searchQuery = `${ticker} stock price google finance`;
     }
 
-    // Using gemini-3-flash-preview as recommended for search grounding
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-flash',
       contents: searchQuery,
       config: {
         tools: [{ googleSearch: {} }],
         systemInstruction: `
           You are a financial data assistant.
-          Task: Find the LATEST market price for the stock provided.
+          Task: Find the absolute LATEST market price for the stock ticker provided.
           
-          INSTRUCTIONS:
-          1. Use Google Search to find the price.
-          2. Return ONLY the numeric value (e.g., 1450.5).
-          3. No currency symbols, no commas, no extra text.
-          4. If not found, return "0".
+          CRITICAL INSTRUCTIONS:
+          1. Use the Google Search tool. Look specifically for data from Google Finance in the search results.
+          2. Return ONLY the numeric price value.
+          3. Do NOT include currency symbols ($, NT, etc.).
+          4. Do NOT include thousands separators (e.g., return 1450, not 1,450).
+          5. If the market is closed, return the closing price.
+          6. If the market is open, return the live price.
+          7. If you absolutely cannot find a price, return 0.
+          
+          Example Correct Outputs:
+          1450.00
+          181.46
+          
+          Example Incorrect Outputs:
+          1,450
+          $181.46
+          The price is 1450
         `,
       }
     });
 
     const text = response.text?.trim();
-    console.log(`[Stock Fetch] ${ticker} response:`, text);
-    
     if (text) {
-      // Remove commas from thousands separators (e.g., 1,450.00 -> 1450.00)
-      const normalizedText = text.replace(/,/g, '');
-      // Extract the first number found in the text
-      const match = normalizedText.match(/\d+(\.\d+)?/);
-      if (match) {
-        const price = parseFloat(match[0]);
-        if (price > 0) {
-          console.log(`[Stock Fetch] ${ticker} successfully parsed: ${price}`);
-          return price;
-        }
-      }
+      // Remove all non-numeric characters except the dot
+      const cleanPrice = text.replace(/[^0-9.]/g, '');
+      const price = parseFloat(cleanPrice);
+      return isNaN(price) ? null : price;
     }
     
-    console.warn(`[Stock Fetch] ${ticker} failed to parse price from: "${text}"`);
     return null;
   } catch (error) {
-    console.error(`[Stock Fetch] ${ticker} error:`, error);
+    console.error("Stock Price Fetch Error:", error);
     return null;
   }
 };

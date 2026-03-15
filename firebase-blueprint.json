@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "Asset": {
+      "title": "Asset",
+      "description": "User's financial asset",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "User ID of the owner"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["TW_STOCK", "US_STOCK", "CASH_TWD", "CASH_USD", "LOAN_TWD"]
+        },
+        "name": {
+          "type": "string"
+        },
+        "shares": {
+          "type": "number"
+        },
+        "costBasis": {
+          "type": "number"
+        },
+        "currentPrice": {
+          "type": "number"
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": ["uid", "type", "name", "shares", "costBasis", "currentPrice"]
+    },
+    "HistoryRecord": {
+      "title": "HistoryRecord",
+      "description": "User's net worth history",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "totalAssets": {
+          "type": "number"
+        },
+        "totalLiabilities": {
+          "type": "number"
+        },
+        "netWorth": {
+          "type": "number"
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": ["uid", "date", "totalAssets", "totalLiabilities", "netWorth"]
+    },
+    "InvestmentRecord": {
+      "title": "InvestmentRecord",
+      "description": "User's capital investment history",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": ["uid", "date", "amount"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/assets/{assetId}": {
+      "schema": "Asset",
+      "description": "User's assets"
+    },
+    "/users/{userId}/history/{historyId}": {
+      "schema": "HistoryRecord",
+      "description": "User's net worth history"
+    },
+    "/users/{userId}/investments/{investmentId}": {
+      "schema": "InvestmentRecord",
+      "description": "User's investment history"
+    }
+  }
+}

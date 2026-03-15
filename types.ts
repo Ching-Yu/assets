@@ -38,6 +38,14 @@ export interface HistoryRecord {
   note?: string;
 }
 
+export interface InvestmentRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  amount: number;
+  target?: string; // e.g. AAPL, 2330
+  note?: string;
+}
+
 export interface GeminiAnalysisResult {
   markdown: string;
   loading: boolean;

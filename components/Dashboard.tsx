@@ -1,11 +1,12 @@
 
 import React, { useMemo } from 'react';
-import { Asset, AssetType } from '../types';
+import { Asset, AssetType, InvestmentRecord } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { TrendingUp, Wallet, Globe, ArrowDownCircle, Activity, Landmark } from 'lucide-react';
 
 interface DashboardProps {
   assets: Asset[];
+  investments: InvestmentRecord[];
   exchangeRate: number;
 }
 
@@ -14,15 +15,20 @@ const PIE_COLORS = [
   '#06b6d4', '#84cc16', '#f97316', '#6366f1', '#14b8a6'
 ];
 
-const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
+const Dashboard: React.FC<DashboardProps> = ({ assets, investments, exchangeRate }) => {
   const summary = useMemo(() => {
     let twStockVal = 0;
     let usStockVal = 0;
     let cashVal = 0;
     let loanVal = 0;
     
+    // Calculate total invested from the investments array
+    const totalInvestedTwd = investments.reduce((sum, record) => sum + record.amount, 0);
+    
     // Calculate total values by category
     assets.forEach(asset => {
+      const isUs = asset.type.includes('US');
+      const rate = isUs ? exchangeRate : 1;
       const val = (asset.type.includes('US') ? (asset.shares * asset.currentPrice) * exchangeRate : (asset.shares * asset.currentPrice));
       
       if (asset.type === AssetType.TW_STOCK) {
@@ -40,6 +46,8 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
 
     const totalAssets = twStockVal + usStockVal + cashVal;
     const netWorth = totalAssets - loanVal;
+    const totalGain = totalAssets - totalInvestedTwd;
+    const totalGainPercent = totalInvestedTwd > 0 ? (totalGain / totalInvestedTwd) * 100 : 0;
 
     // Prepare data for individual asset allocation pie chart (Assets Only)
     const assetData = assets
@@ -67,6 +75,9 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
       totalLiabilitiesTwd: loanVal,
       netWorthTwd: netWorth,
       netWorthUsd: exchangeRate > 0 ? netWorth / exchangeRate : 0,
+      totalInvestedTwd,
+      totalGain,
+      totalGainPercent,
       debtRatio: totalAssets > 0 ? (loanVal / totalAssets) * 100 : 0,
       categoryAllocation: [
          { name: '台股', value: twStockVal },
@@ -75,7 +86,7 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
       ],
       assetAllocation: assetData.length > 0 ? assetData : [{ name: '無資產', value: 1 }]
     };
-  }, [assets, exchangeRate]);
+  }, [assets, investments, exchangeRate]);
 
   const hasData = assets.filter(a => a.type !== AssetType.LOAN_TWD).length > 0;
 
@@ -99,13 +110,37 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
           </p>
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-700/50 pt-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 border-t border-slate-700/50 pt-6">
+             <div className="bg-slate-700/30 p-3 rounded-lg">
+                <div className="text-slate-400 text-xs font-bold mb-1 flex items-center gap-1">
+                    <Wallet size={14} /> 總投入 Invested
+                </div>
+                <div className="text-lg font-semibold text-white">
+                    NT$ {summary.totalInvestedTwd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </div>
+            </div>
+
              <div className="bg-emerald-900/20 border border-emerald-500/20 p-3 rounded-lg">
                 <div className="text-emerald-400 text-xs font-bold mb-1 flex items-center gap-1">
                     <TrendingUp size={14} /> 總資產 Assets
                 </div>
                 <div className="text-lg font-semibold text-emerald-100">
                     NT$ {summary.totalAssetsTwd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </div>
+            </div>
+
+            <div className="bg-slate-700/30 p-3 rounded-lg">
+                <div className="text-slate-400 text-xs font-bold mb-1 flex items-center gap-1">
+                    {summary.totalGain >= 0 ? <TrendingUp size={14} className="text-emerald-400" /> : <ArrowDownCircle size={14} className="text-rose-400" />}
+                    總損益 PnL
+                </div>
+                <div className="flex items-baseline gap-2">
+                    <span className={`text-lg font-semibold ${summary.totalGain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {summary.totalGain >= 0 ? '+' : ''}NT$ {summary.totalGain.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>
+                    <span className={`text-xs ${summary.totalGain >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'}`}>
+                        ({summary.totalGain >= 0 ? '+' : ''}{summary.totalGainPercent.toFixed(2)}%)
+                    </span>
                 </div>
             </div>
 
@@ -116,21 +151,6 @@ const Dashboard: React.FC<DashboardProps> = ({ assets, exchangeRate }) => {
                 <div className="text-lg font-semibold text-rose-100">
                     NT$ {summary.totalLiabilitiesTwd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </div>
-            </div>
-            
-            <div className="bg-slate-700/30 p-3 rounded-lg flex flex-col justify-center">
-                 <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-bold text-slate-400">負債比 (Debt Ratio)</span>
-                    <span className={`text-xs font-bold ${summary.debtRatio > 50 ? 'text-rose-400' : 'text-slate-300'}`}>
-                        {summary.debtRatio.toFixed(1)}%
-                    </span>
-                 </div>
-                 <div className="w-full bg-slate-600 rounded-full h-2">
-                    <div 
-                        className={`h-2 rounded-full ${summary.debtRatio > 50 ? 'bg-rose-500' : 'bg-indigo-500'}`} 
-                        style={{ width: `${Math.min(summary.debtRatio, 100)}%` }}
-                    ></div>
-                 </div>
             </div>
         </div>
       </div>
